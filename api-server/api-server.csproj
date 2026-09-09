@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>api_server</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Asp.Versioning.Mvc" Version="10.2.1" />
+    <PackageReference Include="AutoMapper" Version="16.2.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+    <PackageReference Include="Npgsql.OpenTelemetry" Version="10.0.3" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
+    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
+    <PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="10.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="4.1.1" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="configs\" />
+    <Folder Include="Controllers\Media\Services\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\exs.commons\exs.commons.csproj" />
+    <ProjectReference Include="..\exs.webCommons\exs.webCommons.csproj" />
+    <ProjectReference Include="..\main-database\main-database.csproj" />
+  </ItemGroup>
+
+  <!--
+    Dev-time convenience: catch EF Core model drift before it surfaces as a
+    PendingModelChangesWarning crash at app startup. Runs only for local Debug
+    builds (covers dotnet run/watch and F5 in Visual Studio, which both compile
+    before launching) - skipped for Release/CI so publish pipelines never
+    auto-commit a migration on your behalf.
+
+    Hooked to CoreCompile rather than Build: the .NET SDK dispatches the "Build"
+    target through an outer/inner split that silently swallows BeforeTargets="Build"
+    hooks on SDK-style projects - CoreCompile is the earliest target verified to
+    actually fire on every dotnet build/run/F5.
+  -->
+  <Target Name="EnsurePendingMigrations" BeforeTargets="CoreCompile" Condition="'$(Configuration)' == 'Debug'">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\main-database\Scripts\Update-PendingMigrations.ps1&quot;" ConsoleToMSBuild="true" ContinueOnError="WarnAndContinue">
+      <Output TaskParameter="ConsoleOutput" ItemName="_MigrationCheckOutput" />
+    </Exec>
+    <!-- Exec's own stdout is Normal-importance and gets hidden at dotnet build's default
+         (minimal) verbosity - re-emit as High so a newly created migration is never missed. -->
+    <Message Importance="high" Text="@(_MigrationCheckOutput, '%0a')" Condition="'@(_MigrationCheckOutput)' != ''" />
+  </Target>
+
+</Project>

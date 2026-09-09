@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>db_model</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Map\refs\" />
+  </ItemGroup>
+
+</Project>

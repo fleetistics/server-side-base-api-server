@@ -1,0 +1,35 @@
+# Grafana LGTM all-in-one observability backend (Loki + Grafana + Tempo + Mimir
+# + embedded OTel Collector). Receives everything the API exports over OTLP:
+# traces + metrics (Program.cs) and logs (Serilog OpenTelemetry sink).
+#
+#   docker compose -f docker-compose.lgtm.yml up -d
+#
+# UI:        http://localhost:3000   (admin / password below)
+# OTLP gRPC: localhost:4317          (what OpenTelemetry:OtlpEndpoint / Serilog point at)
+# OTLP HTTP: localhost:4318
+#
+# Data persists in the named volumes below, so history survives restarts.
+# Tuning later: mount component config overrides (Tempo/Loki/Prometheus retention);
+# see https://github.com/grafana/docker-otel-lgtm
+services:
+  lgtm:
+    image: grafana/otel-lgtm:0.31.0
+    container_name: lgtm
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=fleetistics-lgtm
+    volumes:
+      - lgtm-grafana:/data/grafana
+      - lgtm-prometheus:/data/prometheus
+      - lgtm-loki:/data/loki
+      - lgtm-tempo:/data/tempo
+
+volumes:
+  lgtm-grafana:
+  lgtm-prometheus:
+  lgtm-loki:
+  lgtm-tempo:
