@@ -26,6 +26,7 @@ namespace api_server.core
 				.AddScoped<IUserService, UserService>()
 				.AddScoped<IUserLocationPrivacyService, UserLocationPrivacyService>()
 				.AddScoped<IUserSettingsService, UserSettingsService>()
+				.AddScoped<IUserEmergencyAlertService, UserEmergencyAlertService>()
 				.AddScoped<IUserCurrentContextService, UserCurrentContextService>()
 				.AddScoped<ITeamService, TeamService>()
 				.AddAutoMapper(cfg => cfg.AddProfile<TeamMappingProfile>())

@@ -58,6 +58,17 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
                 entity.HasKey(e => new { e.Id });
                 entity.Property(e => e.Id).ValueGeneratedOnAdd();
             });
+            modelBuilder.Entity<UserEmergencyAlertStatus>(entity =>
+            {
+                entity.ToTable("user_emergency_alert_status");
+                entity.HasKey(e => new { e.Id });
+            });
+            modelBuilder.Entity<UserEmergencyAlert>(entity =>
+            {
+                entity.ToTable("user_emergency_alert");
+                entity.HasKey(e => new { e.Id });
+                entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            });
         }
 	}
 }

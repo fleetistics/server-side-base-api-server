@@ -7,6 +7,7 @@ namespace db_model.Team
         public int TeamId { get; set; }
         public int UserId { get; set; }
         public short StatusId { get; set; }
+        public short RoleId { get; set; }
         public DateTime LatestUpdate { get; set; }
 
 
