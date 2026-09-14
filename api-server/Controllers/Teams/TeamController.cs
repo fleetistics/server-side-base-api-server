@@ -47,7 +47,7 @@ namespace api_server.Controllers.Teams
 		}
 
 		[HttpGet("/api/team/{teamId}/details")]
-		[ProducesResponseType(typeof(TeamDetailsDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(TeamDto), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status404NotFound)]
 		public async Task<IActionResult> GetTeamDetails(int teamId, CancellationToken cancellationToken)
 		{
@@ -60,7 +60,7 @@ namespace api_server.Controllers.Teams
 		}
 
 		[HttpPatch("/api/team/{teamId}/details")]
-		[ProducesResponseType(typeof(TeamDetailsDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(TeamDto), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status404NotFound)]
 		public async Task<IActionResult> PatchTeamDetails(int teamId, [FromBody] TeamPatchDto patch, CancellationToken cancellationToken)
 		{

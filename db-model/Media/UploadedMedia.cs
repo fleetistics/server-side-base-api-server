@@ -8,7 +8,6 @@
         public string? PreviewFileName { get; set; }
 		public byte MediaType { get; set; } //MediaType
         public string Guid { get; set; } = default!;
-
         public DateTime LatestUpdate { get; set; }
 	}
 }

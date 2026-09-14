@@ -1,4 +1,4 @@
-namespace api_server.Controllers.MapData.Dto
+namespace api_server.Controllers.MapData
 {
 	// One location sample reported by the device's own background-geolocation SDK.
 	public class MobileGpsTrackPointDto

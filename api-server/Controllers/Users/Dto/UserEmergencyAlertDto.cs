@@ -10,6 +10,7 @@ namespace api_server.Controllers.Users.Dto
 		{
 			Id = model.Id;
 			UserId = model.UserId;
+			MobileGpsDeviceId = model.MobileGpsDeviceId;
 			CreatedDate = model.CreatedDate;
 			CompletedDate = model.CompletedDate;
 			Latitude = model.Latitude;
@@ -22,6 +23,7 @@ namespace api_server.Controllers.Users.Dto
 
 		public int Id { get; set; }
 		public int UserId { get; set; }
+		public int? MobileGpsDeviceId { get; set; }
 		public DateTime CreatedDate { get; set; }
 		public DateTime? CompletedDate { get; set; }
 		public float? Latitude { get; set; }

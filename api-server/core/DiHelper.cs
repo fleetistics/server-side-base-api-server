@@ -29,6 +29,7 @@ namespace api_server.core
 				.AddScoped<IUserEmergencyAlertService, UserEmergencyAlertService>()
 				.AddScoped<IUserCurrentContextService, UserCurrentContextService>()
 				.AddScoped<ITeamService, TeamService>()
+				.AddScoped<ITeamContextService, TeamContextService>()
 				.AddAutoMapper(cfg => cfg.AddProfile<TeamMappingProfile>())
 				.AddScoped<ITranslationService, TranslationService>()
 				.AddSingleton<MediaUrlResolver>()

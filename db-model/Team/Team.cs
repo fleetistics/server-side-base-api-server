@@ -15,6 +15,9 @@ namespace db_model.Team
         public string JoinKey { get; set; }
         public string? JoinQrCode { get; set; }
 
+        public DateTime LatestUpdate { get; set; }
+
         public List<TeamUploadedMedia> UploadedMedias { get; set; } = default!;
+        public List<TeamMemberUser> Members { get; set; } = default!;
     }
 }

@@ -9,12 +9,11 @@ namespace api_server.Controllers.Teams.Dto
 		public TeamMemberDto(TeamMemberUser model)
 		{
 			UserId = model.UserId;
-			StatusId = model.StatusId;
-			LatestUpdate = model.LatestUpdate;
+            RoleId = model.RoleId;
 		}
 
 		public int UserId { get; set; }
-		public short StatusId { get; set; }
-		public DateTime LatestUpdate { get; set; }
+		public short RoleId { get; set; }
+
 	}
 }

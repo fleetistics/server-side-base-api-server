@@ -15,6 +15,10 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 				entity.Property(e => e.Id).ValueGeneratedOnAdd();
 
 				entity.HasOne(e => e.AvatarImage).WithMany().HasForeignKey(e => e.AvatarImageId);
+                entity.HasOne(e => e.GovIDImage).WithMany().HasForeignKey(e => e.GovIDImageId);
+                // Shared primary key one-to-one: UserLocationPrivacy.UserId is both its own PK
+                // and the FK back to User.Id (configured below on the UserLocationPrivacy side).
+                entity.HasOne(e => e.LocationPrivacy).WithOne().HasForeignKey<UserLocationPrivacy>(p => p.UserId);
             });
             modelBuilder.Entity<UserStatus>(entity =>
             {

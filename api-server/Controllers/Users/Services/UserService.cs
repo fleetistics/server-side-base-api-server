@@ -10,15 +10,15 @@ namespace api_server.Controllers.Users.Services
 	public interface IUserService
 	{
 		/// <summary>Null when the user does not exist.</summary>
-		Task<UserDto?> GetUserAsync(int userId, CancellationToken cancellationToken);
+		Task<UserDto?> GetEditUserAsync(int userId, CancellationToken cancellationToken);
 
-		Task<IReadOnlyList<UserDto>> GetActiveUsersAsync(CancellationToken cancellationToken);
+		//Task<IReadOnlyList<UserDto>> GetActiveUsersAsync(CancellationToken cancellationToken);
 
 		/// <summary>Null when the user does not exist.</summary>
 		//Task<UserDto?> UpdateUserAsync(int userId, UserDto data, CancellationToken cancellationToken);
 
-		/// <summary>Applies only the fields present in <paramref name="patch"/>. Null when the user does not exist.</summary>
-		Task<UserDto?> PatchUserAsync(int userId, UserPatchDto patch, CancellationToken cancellationToken);
+		/// <summary>Applies only the fields present in <paramref name="patch"/>. Returns false when the user does not exist.</summary>
+		Task<bool> PatchUserAsync(int userId, UserPatchDto patch, CancellationToken cancellationToken);
 
 		//Task<UserDto> CreateUserAsync(UserDto data, CancellationToken cancellationToken);
 	}
@@ -41,23 +41,32 @@ namespace api_server.Controllers.Users.Services
 			mMediaInboundProcessor = mediaInboundProcessor;
 		}
 
-		public async Task<UserDto?> GetUserAsync(int userId, CancellationToken cancellationToken)
+		public async Task<UserDto?> GetEditUserAsync(int userId, CancellationToken cancellationToken)
 		{
 			var user = await mRepository.GetQueryable<User>(u => u.Id == userId)
 				.Include(u => u.AvatarImage)
+				.Include(u => u.GovIDImage)
 				.AsNoTracking()
 				.FirstOrDefaultAsync(cancellationToken);
-			return user == null ? null : ToDto(user);
+			if (user == null) return null;
+			else
+			{
+                var dto = new UserDto(user);
+                //mMediaUrls.ApplyAbsoluteUrls(dto.Medias);
+                mMediaUrls.ApplyAbsoluteUrl(dto.AvatarImage);
+                mMediaUrls.ApplyAbsoluteUrl(dto.GovIDImage);
+				return dto;
+            }
 		}
 
-		public async Task<IReadOnlyList<UserDto>> GetActiveUsersAsync(CancellationToken cancellationToken)
-		{
-			var users = await mRepository.GetQueryable<User>(u => u.StatusId == UserStatus.Active)
-				.Include(u => u.AvatarImage)
-				.AsNoTracking()
-				.ToListAsync(cancellationToken);
-			return users.Select(ToDto).ToList();
-		}
+		//public async Task<IReadOnlyList<UserDto>> GetActiveUsersAsync(CancellationToken cancellationToken)
+		//{
+		//	var users = await mRepository.GetQueryable<User>(u => u.StatusId == UserStatus.Active)
+		//		.Include(u => u.AvatarImage)
+		//		.AsNoTracking()
+		//		.ToListAsync(cancellationToken);
+		//	return users.Select(ToDto).ToList();
+		//}
 
 		//public async Task<UserDto?> UpdateUserAsync(int userId, UserDto data, CancellationToken cancellationToken)
 		//{
@@ -79,30 +88,47 @@ namespace api_server.Controllers.Users.Services
 		//	return ToDto(user);
 		//}
 
-		public async Task<UserDto?> PatchUserAsync(int userId, UserPatchDto patch, CancellationToken cancellationToken)
+		public async Task<bool> PatchUserAsync(int userId, UserPatchDto patch, CancellationToken cancellationToken)
 		{
-			var user = await mRepository.GetQueryable<User>(u => u.Id == userId)
-				.Include(u => u.AvatarImage)
-				.FirstOrDefaultAsync(cancellationToken);
+			var user = await mRepository.GetQueryable<User>(u => u.Id == userId).FirstOrDefaultAsync(cancellationToken);
 			if (user == null)
 			{
-				return null;
-			}
+                return false;
+            }
 
             // Only the user's own current avatar may be removed by this call — RemoveMediaIds
             // is client-supplied, so anything else in it is silently ignored by ProcessAsync
             // rather than deleted.
-            var allowedRemoveIds = user.AvatarImageId.HasValue
-                ? new[] { user.AvatarImageId.Value }
-                : Array.Empty<int>();
+            var allowedRemoveIds = new List<int>();
+            if (patch.RemoveMediaIds is { Count: > 0 })
+			{
+				
+				if (user.AvatarImageId.HasValue) allowedRemoveIds.Add(user.AvatarImageId.Value);
+				if (user.GovIDImageId.HasValue) allowedRemoveIds.Add(user.GovIDImageId.Value);
+			}
             var newMedias = await mMediaInboundProcessor.ProcessAsync(patch, allowedRemoveIds, cancellationToken);
+			if (patch.RemoveMediaIds is { Count: > 0 } && allowedRemoveIds.Count > 0) 
+			{
+                if (user.AvatarImageId.HasValue && patch.RemoveMediaIds.Contains(user.AvatarImageId.Value))
+                {
+                    user.AvatarImageId = null;
+                }
+				if (user.GovIDImageId.HasValue && patch.RemoveMediaIds.Contains(user.GovIDImageId.Value))
+                {
+                    user.GovIDImageId = null;
+                }
+            }
             if (newMedias.Count > 0)
             {
-                user.AvatarImageId = newMedias[0].Id;
-            }
-            else if (patch.RemoveMediaIds is { Count: > 0 } removeIds && user.AvatarImageId.HasValue && removeIds.Contains(user.AvatarImageId.Value))
-            {
-                user.AvatarImageId = null;
+				var newMediaIdx = patch.InsertMedias.FindIndex(m => m.GroupKey == 1);
+				if (newMediaIdx >= 0) user.AvatarImageId = newMedias[newMediaIdx].Id;
+				else
+				{
+                    newMediaIdx = patch.InsertMedias.FindIndex(m => m.GroupKey == null);
+                    if (newMediaIdx >= 0) user.AvatarImageId = newMedias[newMediaIdx].Id;
+                }
+                newMediaIdx = patch.InsertMedias.FindIndex(m => m.GroupKey == 2);
+                if (newMediaIdx >= 0) user.GovIDImageId = newMedias[newMediaIdx].Id;
             }
 
             // Unset fields are left untouched — that's the entire point of Optional<T>.
@@ -114,7 +140,7 @@ namespace api_server.Controllers.Users.Services
 			if (patch.Email.IsSet) user.Email = patch.Email.Value;
 
 			await mRepository.SaveAsync(cancellationToken);
-			return ToDto(user);
+			return true;
 		}
 
 		//public async Task<UserDto> CreateUserAsync(UserDto data, CancellationToken cancellationToken)
@@ -141,12 +167,5 @@ namespace api_server.Controllers.Users.Services
 		//		.FirstAsync(cancellationToken);
 		//	return ToDto(created);
 		//}
-
-		private UserDto ToDto(User user)
-		{
-			var dto = new UserDto(user);
-			mMediaUrls.ApplyAbsoluteUrls(dto.Medias);
-			return dto;
-		}
 	}
 }

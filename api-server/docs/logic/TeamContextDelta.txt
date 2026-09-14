@@ -1,0 +1,127 @@
+suppose that MobileGpsDevice.StatusId is not considered for now in this logic
+MobileGpsDevice.LatestUpdate IS considered (since-filtered the same way as everything else)
+
+in team folder
+controller TeamContextController
+two separate endpoints/service methods, not one with an optional param:
+  TeamContextService.GetTeamContext( int currentUserId, int teamId) returns TeamContextDelta - full snapshot
+  TeamContextService.GetTeamContextDelta( int currentUserId, int teamId, long latestUpdateDate) returns TeamContextDelta - only what changed
+  latestUpdateDate as integer unix time; required on the delta endpoint (missing - not just "0" - is rejected with 400, since a bindable
+  non-nullable long silently defaults to 0 instead of failing model binding, so the controller binds it as long? and checks for null itself)
+
+finalLatestUpdate is captured once per call, not accumulated as a max over every record touched:
+the very first query of the method (the Team lookup) also selects DateTime.UtcNow in the same
+.Select(...) projection - the Npgsql provider translates that to the database's own now(), not
+the app server's clock, so finalLatestUpdate never depends on app-server/DB clock agreement
+across however many app instances sit behind the load balancer. Round this value UP to the next
+whole second before assigning it to TeamContextDelta.LastUpdate: LastUpdate travels over the wire
+as a whole-second unix timestamp (floors on serialization), and flooring instead of rounding up
+would let a client that echoes it back as its next latestUpdateDate see an already-reported
+record (including this call's own baseline rows, if setup and this call land in the same second)
+look "changed" again. The cost is symmetrical, not one-sided: a genuinely new change landing in
+the same second this rounds up into is simply picked up on the client's next poll instead of this
+one - normal, bounded (< 1s) polling latency, not a missed update.
+
+the currentUserId is taken in Controller from Indentity Claim
+the currentUserId is excluded from returned User, MapState, Alert
+in case currentUserId is not TeamMemberUser.StatusId == TeamMemberUserStatus.Active - return 403
+
+1. GetTeamContext (full snapshot)
+
+
+1.1. load Team with Id == teamId and Team.StatusId == TeamStatus.Active (Select alongside DateTime.UtcNow, see above)
+if not found - return 410
+else - add TeamHeaderDto to TeamContextDelta.TeamHeader
+
+1.2. load TeamDetails with TeamId == teamId
+if found - add TeamDetailsDto to TeamContextDelta.TeamDetails
+
+1.3. load all TeamUploadedMedia with TeamId == teamId and GroupKey is null or GroupKey != -1
+.Include(e.Media) and mMediaUrls.ApplyAbsoluteUrl(dto.Media); add UploadedMediaDto to TeamContextDelta.TeamUploadedMedias
+
+1.4. load list TeamMemberUser with TeamId == teamId and StatusId == TeamMemberUserStatus.Active
+inner join with User with TeamMemberUser.UserId == User.Id and User.StatusId == UserStatus.Active .Include(u => u.AvatarImage).Include(u => u.GovIDImage).Include(u => u.LocationPrivacy)
+
+1.4.1. Check currentUserId is in the list
+if not - return 403
+
+for all records except currentUserId's own and those with LocationPrivacy.PrivacyMode > 0:
+add TeamMemberUserDto to TeamContextDelta.Members and UserDto to TeamContextDelta.Users, mMediaUrls.ApplyAbsoluteUrl(dto.AvatarImage); mMediaUrls.ApplyAbsoluteUrl(dto.GovIDImage);
+
+1.5. for userIds from UserDto.Id in TeamContextDelta.Users (skip this step entirely if that list is empty)
+load MobileGpsDevices with UserId in userIds and add MobileGpsDeviceDtos to TeamContextDelta.MobileGpsDevices
+load MobileGpsDeviceMapStates with UserId in userIds and add MobileGpsDeviceMapStateDtos to TeamContextDelta.GpsDeviceMapStates
+load UserEmergencyAlerts with UserId in userIds and UserEmergencyAlert.StatusId == UserEmergencyAlertStatus.Active and add UserEmergencyAlertDtos to TeamContextDelta.UserAlerts
+
+1.6. set finalLatestUpdate (rounded up, see above) to TeamContextDelta.LastUpdate
+
+
+2. GetTeamContextDelta (only what changed since latestUpdateDate)
+
+2.1. load Team with Id == teamId and Team.StatusId == TeamStatus.Active (Select alongside DateTime.UtcNow, see above)
+if not found - return 410
+if Team.LatestUpdate > latestUpdateDate - add TeamHeaderDto to TeamContextDelta.TeamHeader
+
+2.2. load TeamDetails with TeamId == teamId and LatestUpdate > latestUpdateDate
+if found - add TeamDetailsDto to TeamContextDelta.TeamDetails
+
+2.3. load all TeamUploadedMedia with TeamId == teamId and LatestUpdate > latestUpdateDate
+if TeamUploadedMedia.GroupKey == -1 - add TeamUploadedMedia.UploadedMediaId to TeamContextDelta.RemoveTeamMediaIds
+else - add TeamUploadedMediaDto to TeamContextDelta.TeamUploadedMedias
+.Include(e.Media) and mMediaUrls.ApplyAbsoluteUrl(dto.Media);
+
+2.4. load list TeamMemberUser with TeamId == teamId and (StatusId == TeamMemberUserStatus.Active or LatestUpdate > latestUpdateDate)
+
+2.4.1. Check currentUserId is in the list with TeamMemberUser.StatusId == TeamMemberUserStatus.Active
+if not - return 403
+(currentUserId's own record is simply skipped below, not removed from the list up front - it's
+still needed so this check itself can see it)
+
+create empty teamUserIds = [] and fullReloadUserIds = [] and foreach record except currentUserId's own:
+  if TeamMemberUser.LatestUpdate > latestUpdateDate
+    if StatusId == Active - add TeamMemberUserDto to TeamContextDelta.Members, add UserId to fullReloadUserIds
+    else - add UserId to TeamContextDelta.RemoveUserIds
+    (either way) skip to next record - a record placed in one of the buckets above, or removed
+    outright, must never also fall into teamUserIds below, or it (and its devices/alerts/map
+    state) would be processed and reported twice
+  else - add UserId to teamUserIds
+
+2.5. by teamUserIds (skip this whole step if teamUserIds is empty):
+load UserLocationPrivacy with UserId in teamUserIds and LatestUpdate > latestUpdateDate
+for each: remove UserId from teamUserIds either way (it's leaving the steady-state batch below
+regardless of which branch it takes)
+  if PrivacyMode == 0 - add UserId to fullReloadUserIds
+  else - add UserId to TeamContextDelta.RemoveUserIds
+
+by the teamUserIds still remaining (skip if empty):
+load User with Id in teamUserIds and LatestUpdate > latestUpdateDate .Include(AvatarImage).Include(GovIDImage)
+for each:
+  if StatusId != Active - remove UserId from teamUserIds, add UserId to TeamContextDelta.RemoveUserIds
+  (a user who's no longer active must leave the steady-state batch too, or their stale
+  devices/alerts would still be sent in step 2.7 alongside this removal)
+  else - add UserDto to TeamContextDelta.Users
+
+2.6. by fullReloadUserIds (skip this whole step if fullReloadUserIds is empty):
+load User with Id in fullReloadUserIds (unconditional, no LatestUpdate filter - full reload) .Include(AvatarImage).Include(GovIDImage).Include(LocationPrivacy)
+for each:
+  if StatusId != Active or LocationPrivacy.PrivacyMode > 0 - remove UserId from fullReloadUserIds, add UserId to TeamContextDelta.RemoveUserIds
+  (either condition means the client must be told to remove this member, not just silently
+  receive nothing about them - they were already visible from a previous sync, that's why they
+  ended up in a full reload in the first place)
+  else - add UserDto to TeamContextDelta.Users
+
+load MobileGpsDevices with UserId in fullReloadUserIds (unconditional) and add MobileGpsDeviceDtos to TeamContextDelta.MobileGpsDevices
+load MobileGpsDeviceMapStates with UserId in fullReloadUserIds (unconditional) and add MobileGpsDeviceMapStateDtos to TeamContextDelta.GpsDeviceMapStates
+load UserEmergencyAlerts with UserId in fullReloadUserIds and StatusId == Active (unconditional) and add UserEmergencyAlertDtos to TeamContextDelta.UserAlerts
+(unconditional/current-state-only here, same as fullSingleUserLoadload always was - no explicit
+removal signal needed for a user's own devices/alerts/map-state, since this full reload already
+replaces the client's whole picture of that one user)
+
+2.7. by the teamUserIds still remaining after 2.5 (skip if empty):
+load MobileGpsDevices with UserId in teamUserIds and LatestUpdate > latestUpdateDate and add MobileGpsDeviceDtos to TeamContextDelta.MobileGpsDevices
+load MobileGpsDeviceMapStates with UserId in teamUserIds and LatestOnMapUpdate > latestUpdateDate and add MobileGpsDeviceMapStateDtos to TeamContextDelta.GpsDeviceMapStates
+load UserEmergencyAlert with UserId in teamUserIds and LatestUpdate > latestUpdateDate, if StatusId == Active - add UserEmergencyAlertDto to TeamContextDelta.UserAlerts, else - add UserEmergencyAlert.Id to TeamContextDelta.RemoveUserAlertIds
+
+in case nothing was changed in TeamContextDelta - return 204
+
+2.8. set finalLatestUpdate (rounded up, see above) to TeamContextDelta.LastUpdate

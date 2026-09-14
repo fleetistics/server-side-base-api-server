@@ -8,6 +8,7 @@ namespace db_model.UserManagement
     {
         public int Id { get; set; }
         public int UserId { get; set; }
+        public int? MobileGpsDeviceId { get; set; }
         public DateTime CreatedDate { get; set; }
         public DateTime? CompletedDate { get; set; }
         public float? Latitude { get; set; }

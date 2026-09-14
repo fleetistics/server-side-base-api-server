@@ -14,25 +14,25 @@ namespace api_server.Controllers.Users
 			mUsers = users;
 		}
 
-		[HttpGet("/api/users/{userId}")]
-		[ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
-		[ProducesResponseType(StatusCodes.Status404NotFound)]
-		public async Task<IActionResult> GetUser([FromRoute] int userId, CancellationToken cancellationToken)
-		{
-			var user = await mUsers.GetUserAsync(userId, cancellationToken);
-			if (user == null)
-			{
-				return NotFound(new { message = "User not found." });
-			}
-			return Ok(user);
-		}
+		//[HttpGet("/api/users/{userId}")]
+		//[ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+		//[ProducesResponseType(StatusCodes.Status404NotFound)]
+		//public async Task<IActionResult> GetUser([FromRoute] int userId, CancellationToken cancellationToken)
+		//{
+		//	var user = await mUsers.GetUserAsync(userId, cancellationToken);
+		//	if (user == null)
+		//	{
+		//		return NotFound(new { message = "User not found." });
+		//	}
+		//	return Ok(user);
+		//}
 
 		[HttpGet("/api/users/me")]
 		[ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status404NotFound)]
 		public async Task<IActionResult> GetMyUser(CancellationToken cancellationToken)
 		{
-			var user = await mUsers.GetUserAsync(UserId, cancellationToken);
+			var user = await mUsers.GetEditUserAsync(UserId, cancellationToken);
 			if (user == null)
 			{
 				return NotFound(new { message = "User not found." });
@@ -40,12 +40,12 @@ namespace api_server.Controllers.Users
 			return Ok(user);
 		}
 
-		[HttpGet("/api/users")]
-		[ProducesResponseType(typeof(IEnumerable<UserDto>), StatusCodes.Status200OK)]
-		public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
-		{
-			return Ok(await mUsers.GetActiveUsersAsync(cancellationToken));
-		}
+		//[HttpGet("/api/users")]
+		//[ProducesResponseType(typeof(IEnumerable<UserDto>), StatusCodes.Status200OK)]
+		//public async Task<IActionResult> GetUsers(CancellationToken cancellationToken)
+		//{
+		//	return Ok(await mUsers.GetActiveUsersAsync(cancellationToken));
+		//}
 
 		// Full-replace update is disabled: PatchUser is the only supported way to modify a user.
 		[HttpPut("/api/users/{userId}")]
@@ -56,16 +56,16 @@ namespace api_server.Controllers.Users
 		}
 
 		[HttpPatch("/api/users/{userId}")]
-		[ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status404NotFound)]
 		public async Task<IActionResult> PatchUser([FromRoute] int userId, [FromBody] UserPatchDto patch, CancellationToken cancellationToken)
 		{
-			var updated = await mUsers.PatchUserAsync(userId, patch, cancellationToken);
-			if (updated == null)
+			var found = await mUsers.PatchUserAsync(userId, patch, cancellationToken);
+			if (!found)
 			{
 				return NotFound(new { message = "User not found." });
 			}
-			return Ok(updated);
+			return Ok();
 		}
 
 		[Idempotent]

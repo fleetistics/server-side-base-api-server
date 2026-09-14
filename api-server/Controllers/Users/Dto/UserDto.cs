@@ -3,7 +3,7 @@ using db_model.UserManagement;
 
 namespace api_server.Controllers.Users.Dto
 {
-	public class UserDto : MediaAttachableDto
+	public class UserDto 
 	{
 		public UserDto() { }
 
@@ -18,7 +18,11 @@ namespace api_server.Controllers.Users.Dto
 			Email = user.Email;
 			if (user.AvatarImage != null)
 			{
-				Medias = new List<UploadedMediaDto> { new UploadedMediaDto(user.AvatarImage) };
+                AvatarImage = new UploadedMediaDto(user.AvatarImage);
+			}
+			if (user.GovIDImage != null)
+			{
+                GovIDImage = new UploadedMediaDto(user.GovIDImage);
 			}
 		}
 
@@ -29,6 +33,7 @@ namespace api_server.Controllers.Users.Dto
 		public string? FullName { get; set; } = default!;
 		public string? Phone { get; set; }
 		public string? Email { get; set; }
-		
-	}
+        public UploadedMediaDto? AvatarImage { get; set; }
+        public UploadedMediaDto? GovIDImage { get; set; }
+    }
 }

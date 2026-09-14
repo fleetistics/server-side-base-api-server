@@ -101,6 +101,13 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             ALTER TABLE "translation_token" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
             ALTER TABLE "translation" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
             ALTER TABLE "user_settings" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "team" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "team_details" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "team_member_user" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "team_uploaded_media" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "user_location_privacy" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "user_emergency_alert" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "mobile_gps_device" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
             """);
 
         await using (var connection = new NpgsqlConnection(_postgres.GetConnectionString()))

@@ -16,7 +16,7 @@ namespace api_server.Controllers.Users
 		[ProducesResponseType(typeof(UserEmergencyAlertDto), StatusCodes.Status201Created)]
 		public async Task<IActionResult> CreateMyEmergencyAlert([FromBody] CreateUserEmergencyAlertDto body, CancellationToken cancellationToken)
 		{
-			var alert = await mUserEmergencyAlert.CreateMyEmergencyAlertAsync(UserId, body, cancellationToken);
+			var alert = await mUserEmergencyAlert.CreateMyEmergencyAlertAsync(UserId, MobileGpsDeviceId, body, cancellationToken);
 			return CreatedAtAction(nameof(GetMyActiveEmergencyAlert), null, alert);
 		}
 

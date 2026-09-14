@@ -25,7 +25,10 @@ namespace db_model.UserManagement
         public string? Phone { get; set; }
         public string? Email { get; set; }
         public int? AvatarImageId { get; set; }
+        public int? GovIDImageId { get; set; }
 
         public UploadedMedia? AvatarImage { get; set; }
-	}
+        public UploadedMedia? GovIDImage { get; set; }
+        public UserLocationPrivacy? LocationPrivacy { get; set; }
+    }
 }

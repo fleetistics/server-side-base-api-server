@@ -10,11 +10,11 @@ namespace api_server.Controllers.Teams.Dto
 		{
 			UploadedMediaId = model.UploadedMediaId;
 			GroupKey = model.GroupKey;
-			LatestUpdate = model.LatestUpdate;
+
 		}
 
 		public int UploadedMediaId { get; set; }
 		public short? GroupKey { get; set; }
-		public DateTime LatestUpdate { get; set; }
+
 	}
 }

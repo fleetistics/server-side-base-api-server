@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -13,9 +14,11 @@ using mf.aiApi.mainDatabase.DatabaseContext;
 namespace main_database.Migrations
 {
     [DbContext(typeof(MainDatabaseContext))]
-    partial class MainDatabaseContextModelSnapshot : ModelSnapshot
+    [Migration("20260911172343_20260911192338")]
+    partial class _20260911192338
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -409,12 +412,6 @@ namespace main_database.Migrations
                     b.Property<string>("JoinQrCode")
                         .HasColumnType("text");
 
-                    b.Property<DateTime>("LatestUpdate")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
                     b.Property<short>("StatusId")
                         .HasColumnType("smallint");
 
@@ -466,37 +463,9 @@ namespace main_database.Migrations
                     b.Property<short>("StatusId")
                         .HasColumnType("smallint");
 
-                    b.Property<int?>("TeamId1")
-                        .HasColumnType("integer");
-
                     b.HasKey("TeamId", "UserId");
 
-                    b.HasIndex("TeamId1");
-
                     b.ToTable("team_member_user", (string)null);
-                });
-
-            modelBuilder.Entity("db_model.Team.TeamMemberUserStatus", b =>
-                {
-                    b.Property<short>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("smallint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
-
-                    b.Property<DateTime>("LatestUpdate")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("team_user_status", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Team.TeamStatus", b =>
@@ -544,6 +513,29 @@ namespace main_database.Migrations
                     b.HasIndex("UploadedMediaId");
 
                     b.ToTable("team_uploaded_media", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Team.TeamUserStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("team_user_status", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Translations.Language", b =>
@@ -741,9 +733,6 @@ namespace main_database.Migrations
 
                     b.Property<float?>("Longitude")
                         .HasColumnType("real");
-
-                    b.Property<int?>("MobileGpsDeviceId")
-                        .HasColumnType("integer");
 
                     b.Property<short>("StatusId")
                         .HasColumnType("smallint");
@@ -1024,10 +1013,6 @@ namespace main_database.Migrations
                         .HasForeignKey("TeamId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.HasOne("db_model.Team.Team", null)
-                        .WithMany("Members")
-                        .HasForeignKey("TeamId1");
                 });
 
             modelBuilder.Entity("db_model.Team.TeamUploadedMedia", b =>
@@ -1081,15 +1066,6 @@ namespace main_database.Migrations
                     b.Navigation("GovIDImage");
                 });
 
-            modelBuilder.Entity("db_model.UserManagement.UserLocationPrivacy", b =>
-                {
-                    b.HasOne("db_model.UserManagement.User", null)
-                        .WithOne("LocationPrivacy")
-                        .HasForeignKey("db_model.UserManagement.UserLocationPrivacy", "UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("db_model.UserManagement.UserSession", b =>
                 {
                     b.HasOne("db_model.Gps.MobileGpsDevice", "MobileGpsDevice")
@@ -1101,14 +1077,7 @@ namespace main_database.Migrations
 
             modelBuilder.Entity("db_model.Team.Team", b =>
                 {
-                    b.Navigation("Members");
-
                     b.Navigation("UploadedMedias");
-                });
-
-            modelBuilder.Entity("db_model.UserManagement.User", b =>
-                {
-                    b.Navigation("LocationPrivacy");
                 });
 #pragma warning restore 612, 618
         }

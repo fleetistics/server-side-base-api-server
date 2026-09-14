@@ -8,7 +8,7 @@ namespace api_server.Controllers.Users.Services
 {
 	public interface IUserEmergencyAlertService
 	{
-		Task<UserEmergencyAlertDto> CreateMyEmergencyAlertAsync(int userId, CreateUserEmergencyAlertDto body, CancellationToken cancellationToken);
+		Task<UserEmergencyAlertDto> CreateMyEmergencyAlertAsync(int userId, int? mobileGpsDeviceId, CreateUserEmergencyAlertDto body, CancellationToken cancellationToken);
 
 		/// <summary>Null when the user has no active (uncompleted) emergency alert.</summary>
 		Task<MyUserEmergencyAlertDto?> GetMyActiveEmergencyAlertAsync(int userId, CancellationToken cancellationToken);
@@ -24,13 +24,14 @@ namespace api_server.Controllers.Users.Services
 			mRepository = repository;
 		}
 
-		public async Task<UserEmergencyAlertDto> CreateMyEmergencyAlertAsync(int userId, CreateUserEmergencyAlertDto body, CancellationToken cancellationToken)
+		public async Task<UserEmergencyAlertDto> CreateMyEmergencyAlertAsync(int userId, int? mobileGpsDeviceId, CreateUserEmergencyAlertDto body, CancellationToken cancellationToken)
 		{
             var entity = await activeAlertQuery(userId).AsNoTracking().FirstOrDefaultAsync(cancellationToken);
 			if (entity != null) throw new TUserMessageException("An active alert already exists.");
             entity = new UserEmergencyAlert
 			{
 				UserId = userId,
+				MobileGpsDeviceId = mobileGpsDeviceId,
 				CreatedDate = DateTime.UtcNow,
 				Latitude = body.Latitude,
 				Longitude = body.Longitude,

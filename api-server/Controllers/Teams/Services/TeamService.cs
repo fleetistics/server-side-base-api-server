@@ -19,10 +19,10 @@ namespace api_server.Controllers.Teams.Services
 		Task<TeamDto?> PatchTeamAsync(int teamId, TeamPatchDto patch, CancellationToken cancellationToken);
 
 		/// <summary>Null when no team exists with this id.</summary>
-		Task<TeamDetailsDto?> GetTeamDetailsAsync(int teamId, CancellationToken cancellationToken);
+		Task<TeamDto?> GetTeamDetailsAsync(int teamId, CancellationToken cancellationToken);
 
 		/// <summary>Same field updates as <see cref="PatchTeamAsync"/>, returning the expanded details view. Null when no team exists with this id.</summary>
-		Task<TeamDetailsDto?> PatchTeamDetailsAsync(int teamId, TeamPatchDto patch, CancellationToken cancellationToken);
+		Task<TeamDto?> PatchTeamDetailsAsync(int teamId, TeamPatchDto patch, CancellationToken cancellationToken);
 	}
 
 	public sealed class TeamService : ITeamService
@@ -105,7 +105,7 @@ namespace api_server.Controllers.Teams.Services
 			return new TeamDto(entity);
 		}
 
-		public async Task<TeamDetailsDto?> GetTeamDetailsAsync(int teamId, CancellationToken cancellationToken)
+		public async Task<TeamDto?> GetTeamDetailsAsync(int teamId, CancellationToken cancellationToken)
 		{
 			var team = await mRepository.GetQueryable<Team>(e => e.Id == teamId)
 				.AsNoTracking()
@@ -115,17 +115,13 @@ namespace api_server.Controllers.Teams.Services
 			var details = await mRepository.GetQueryable<TeamDetails>(e => e.TeamId == teamId)
 				.AsNoTracking()
 				.FirstOrDefaultAsync(cancellationToken);
-			var members = await mRepository.GetQueryable<TeamMemberUser>(e => e.TeamId == teamId)
-				.AsNoTracking()
-				.ToListAsync(cancellationToken);
-			var media = await mRepository.GetQueryable<TeamUploadedMedia>(e => e.TeamId == teamId)
-				.AsNoTracking()
-				.ToListAsync(cancellationToken);
 
-			return new TeamDetailsDto(team, details!.LatestUpdate, members, media);
+			var dto = new TeamDto(team);
+			if (details != null) dto.AssignDetails(details);
+			return dto;
 		}
 
-		public async Task<TeamDetailsDto?> PatchTeamDetailsAsync(int teamId, TeamPatchDto patch, CancellationToken cancellationToken)
+		public async Task<TeamDto?> PatchTeamDetailsAsync(int teamId, TeamPatchDto patch, CancellationToken cancellationToken)
 		{
 			var team = await PatchTeamAsync(teamId, patch, cancellationToken);
 			if (team == null) return null;

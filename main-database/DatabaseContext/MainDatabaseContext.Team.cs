@@ -39,7 +39,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 				entity.ToTable("team_status");
 				entity.HasKey(e => e.Id);
 			});
-			modelBuilder.Entity<TeamUserStatus>(entity =>
+			modelBuilder.Entity<TeamMemberUserStatus>(entity =>
 			{
 				entity.ToTable("team_user_status");
 				entity.HasKey(e => e.Id);

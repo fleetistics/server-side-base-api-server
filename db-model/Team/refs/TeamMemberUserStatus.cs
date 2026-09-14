@@ -1,7 +1,7 @@
 ﻿namespace db_model.Team
 { 
 
-    public class TeamUserStatus
+    public class TeamMemberUserStatus
     {
         public const short Active = 1;
         public const short WithOtherTeam = 2;

@@ -6,7 +6,7 @@ namespace db_model.Team
     {
         public int TeamId { get; set; }
         public int UploadedMediaId { get; set; }
-        public short? GroupKey { get; set; }
+        public short? GroupKey { get; set; } //-1 value means removed uploaded media
         public DateTime LatestUpdate { get; set; }
 
         public UploadedMedia? Media { get; set; }
