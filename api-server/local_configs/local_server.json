@@ -43,7 +43,7 @@
       {
         "Name": "File",
         "Args": {
-          "path": "e:\\work\\logs\\base-server-side\\serilog-all-.log",
+          "path": "c:\\work\\logs\\base-server-side\\serilog-all-.log",
           "rollingInterval": "Day",
           "restrictedToMinimumLevel": "Debug",
           "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{ThreadId}] {SourceContext} {Message:lj}{NewLine}{Exception}"
@@ -52,7 +52,7 @@
       {
         "Name": "File",
         "Args": {
-          "path": "e:\\work\\logs\\base-server-side\\serilog-own-.log",
+          "path": "c:\\work\\logs\\base-server-side\\serilog-own-.log",
           "rollingInterval": "Day",
           "restrictedToMinimumLevel": "Information",
           "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{ThreadId}] {SourceContext} {Message:lj}{NewLine}{Exception}"

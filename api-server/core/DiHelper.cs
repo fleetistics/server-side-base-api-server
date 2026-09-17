@@ -8,6 +8,7 @@ using api_server.Controllers.Translations;
 using api_server.Controllers.Users.Services;
 using api_server.Idempotency;
 using api_server.Service;
+using api_server.Services.Notifications;
 using mf.aiApi.mainDatabase.Config;
 
 namespace api_server.core
@@ -36,6 +37,9 @@ namespace api_server.core
 				.AddSingleton<MediaPreviewService>()
 				.AddSingleton<IMediaPreviewQueue>(sp => sp.GetRequiredService<MediaPreviewService>())
 				.AddHostedService(sp => sp.GetRequiredService<MediaPreviewService>())
+				.AddSingleton<NotificationService>()
+				.AddSingleton<INotifier>(sp => sp.GetRequiredService<NotificationService>())
+				.AddHostedService(sp => sp.GetRequiredService<NotificationService>())
 				.AddHostedService<ClientLogRetentionService>()
 				.AddSingleton<MobileGpsDeviceMapTrackService>()
                 .AddSingleton<QrCodeBuilder>()

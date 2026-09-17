@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="DotLiquid" Version="2.3.197" />
+  </ItemGroup>
+
 </Project>

@@ -13,6 +13,7 @@ project for future backends — the patterns below are the template.
 | `exs.commons`, `exs.databaseCommons`, `exs.webCommons` | Shared infrastructure (JSON config, `IRepository` implementation) |
 | `tests/api-server.IntegrationTests` | xUnit + WebApplicationFactory + Testcontainers (real PostgreSQL) |
 | `telemetry/` | `docker-compose.lgtm.yml` — local Grafana LGTM observability backend |
+| `fcm-notification-sender` | Standalone Worker Service (systemd), drains `notification_queue` and pushes via FCM |
 
 ## Prerequisites
 
@@ -71,6 +72,19 @@ header (GUID); duplicate keys return the cached response. Store is in-memory —
 **Background work** — `ClientLogRetentionService` (daily purge of uploaded client
 logs, `ClientLog:RetentionDays`, default 90) is the pattern: a `BackgroundService`
 creating a DI scope per run.
+
+**Notifications** — transport-agnostic fan-out, transport-specific delivery.
+`INotifier`/`NotificationService` (`api-server`) buffer requests in memory, then
+persist one `Notification` + one `NotificationToUser` per user + one
+`NotificationQueue` row per (user, transport); today that's always FCM. The
+standalone `fcm-notification-sender` project (a separate systemd-hosted Worker
+Service, see its own directory) polls `notification_queue`, resolves each user's
+currently-active mobile `UserSession`s, sends via FirebaseAdmin with an in-memory
+Polly retry (transient vs. permanent `FirebaseMessagingException` codes), then
+writes the terminal `NotificationSent` (+ one `FCMNotificationSent` per session
+attempted) and removes the queue row. Adding email/SMS/portal later means another
+`NotificationQueue`-TransportType and another standalone sender — `NotificationService`
+doesn't change.
 
 **Health** — `/health/live` (process up) and `/health/ready` (DB reachable), both
 anonymous, for orchestrator probes.
