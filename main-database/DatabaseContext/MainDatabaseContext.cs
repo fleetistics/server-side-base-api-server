@@ -21,6 +21,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			//createAppStructureModel(modelBuilder);
 			createMapModel(modelBuilder);
 			createTeamModel(modelBuilder);
+			createNotificationModel(modelBuilder);
 
 			// Every optimistic-lock column: DB stamps it via DEFAULT on insert and the
 			// update_latestupdate_column trigger (LatestUpdateTriggerSqlGenerator) on update, so EF

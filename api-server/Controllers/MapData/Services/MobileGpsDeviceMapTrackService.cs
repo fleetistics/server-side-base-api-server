@@ -213,7 +213,11 @@ namespace api_server.Controllers.MapData.Services
 
 		public override async Task StopAsync(CancellationToken cancellationToken)
 		{
-			mChannel.Writer.Complete();
+			// TryComplete, not Complete: the host can call StopAsync on a hosted service more than
+			// once during shutdown (observed via WebApplicationFactory's teardown) - Complete()
+			// throws ChannelClosedException on a channel that's already completed, TryComplete()
+			// just returns false.
+			mChannel.Writer.TryComplete();
 			await base.StopAsync(cancellationToken);
 		}
 
