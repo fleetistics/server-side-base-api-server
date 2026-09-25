@@ -20,8 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\server-side-commons\exs.dbContextCommons\exs.dbContextCommons.csproj" />
+    <ProjectReference Include="..\..\server-side-notifications\exs.notifications-database\exs.notifications-database.csproj" />
     <ProjectReference Include="..\db-model\db-model.csproj" />
-    <ProjectReference Include="..\exs.databaseCommons\exs.databaseCommons.csproj" />
   </ItemGroup>
 
   <ItemGroup>

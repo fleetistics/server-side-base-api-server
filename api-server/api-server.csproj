@@ -36,6 +36,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\server-side-notifications\exs.notifications-service\exs.notifications-service.csproj" />
     <ProjectReference Include="..\main-database\main-database.csproj" />
   </ItemGroup>
 

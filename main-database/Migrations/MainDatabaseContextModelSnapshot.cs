@@ -25,33 +25,6 @@ namespace main_database.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("db_model.AppStructure.ClientDevicePlatform", b =>
-                {
-                    b.Property<short>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("smallint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
-
-                    b.Property<DateTime>("LatestUpdate")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("PlatformKeys")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("client_device_platform", (string)null);
-                });
-
             modelBuilder.Entity("db_model.Gps.GpsDevice", b =>
                 {
                     b.Property<int>("Id")
@@ -383,215 +356,6 @@ namespace main_database.Migrations
                         .HasFilter("\"Guid\" <> ''");
 
                     b.ToTable("uploaded_media", (string)null);
-                });
-
-            modelBuilder.Entity("db_model.Notifications.FCMNotificationSent", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<byte>("AttemptNumber")
-                        .HasColumnType("smallint");
-
-                    b.Property<string>("ErrorCode")
-                        .HasColumnType("text");
-
-                    b.Property<string>("FCMToken")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("NotificationSentId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("ProviderMessageId")
-                        .HasColumnType("text");
-
-                    b.Property<byte>("Result")
-                        .HasColumnType("smallint");
-
-                    b.Property<DateTime>("SentAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("SessionId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NotificationSentId");
-
-                    b.ToTable("fcm_notification_sent", (string)null);
-                });
-
-            modelBuilder.Entity("db_model.Notifications.Notification", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Body")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime>("Date")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int?>("EntityId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Payload")
-                        .HasColumnType("text");
-
-                    b.Property<string>("Title")
-                        .HasColumnType("text");
-
-                    b.Property<short>("TypeId")
-                        .HasColumnType("smallint");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("notification", (string)null);
-                });
-
-            modelBuilder.Entity("db_model.Notifications.NotificationQueue", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("Created")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("NotificationId")
-                        .HasColumnType("integer");
-
-                    b.Property<byte>("TransportType")
-                        .HasColumnType("smallint");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NotificationId");
-
-                    b.ToTable("notification_queue", (string)null);
-                });
-
-            modelBuilder.Entity("db_model.Notifications.NotificationResult", b =>
-                {
-                    b.Property<byte>("Id")
-                        .HasColumnType("smallint");
-
-                    b.Property<DateTime>("LatestUpdate")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("notification_result", (string)null);
-                });
-
-            modelBuilder.Entity("db_model.Notifications.NotificationSent", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("Created")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<int>("NotificationId")
-                        .HasColumnType("integer");
-
-                    b.Property<byte>("Result")
-                        .HasColumnType("smallint");
-
-                    b.Property<DateTime>("SentAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<byte>("TransportType")
-                        .HasColumnType("smallint");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NotificationId");
-
-                    b.ToTable("notification_sent", (string)null);
-                });
-
-            modelBuilder.Entity("db_model.Notifications.NotificationToUser", b =>
-                {
-                    b.Property<int>("UserId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("NotificationId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("UserId", "NotificationId");
-
-                    b.HasIndex("NotificationId");
-
-                    b.ToTable("notification2user", (string)null);
-                });
-
-            modelBuilder.Entity("db_model.Notifications.NotificationTransportType", b =>
-                {
-                    b.Property<byte>("Id")
-                        .HasColumnType("smallint");
-
-                    b.Property<DateTime>("LatestUpdate")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("notification_transport_type", (string)null);
-                });
-
-            modelBuilder.Entity("db_model.Notifications.NotificationType", b =>
-                {
-                    b.Property<short>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("smallint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
-
-                    b.Property<DateTime>("LatestUpdate")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("notification_type", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Team.Team", b =>
@@ -1015,8 +779,10 @@ namespace main_database.Migrations
 
                     b.Property<short?>("ClientApplicationId")
                         .HasColumnType("smallint");
+
                     b.Property<short?>("ClientDevicePlatformId")
                         .HasColumnType("smallint");
+
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -1192,6 +958,152 @@ namespace main_database.Migrations
                     b.ToTable("user_session", (string)null);
                 });
 
+            modelBuilder.Entity("exs.notifications_model.Notifications.Notification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("EntityId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Payload")
+                        .HasColumnType("text");
+
+                    b.Property<byte>("Status")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("text");
+
+                    b.Property<short>("TypeId")
+                        .HasColumnType("smallint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date")
+                        .HasDatabaseName("IX_notification_unprocessed")
+                        .HasFilter("\"Status\" = 0");
+
+                    b.ToTable("notification", (string)null);
+                });
+
+            modelBuilder.Entity("exs.notifications_model.Notifications.NotificationToUser", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("NotificationId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("UserId", "NotificationId");
+
+                    b.HasIndex("NotificationId");
+
+                    b.ToTable("notification2user", (string)null);
+                });
+
+            modelBuilder.Entity("exs.notifications_model.Notifications.NotificationType", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("notification_type", (string)null);
+                });
+
+            modelBuilder.Entity("exs.notifications_model.Transports.FcmQueue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsProcessing")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("NotificationId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date")
+                        .HasDatabaseName("IX_fcm_queue_Date");
+
+                    b.HasIndex("NotificationId");
+
+                    b.ToTable("fcm_queue", (string)null);
+                });
+
+            modelBuilder.Entity("exs.notifications_model.Transports.FcmSent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ErrorCode")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FcmToken")
+                        .HasColumnType("text");
+
+                    b.Property<int>("NotificationId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasColumnType("text");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("UserSessionId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NotificationId", "UserId")
+                        .HasDatabaseName("IX_fcm_sent_NotificationId_UserId");
+
+                    b.ToTable("fcm_sent", (string)null);
+                });
+
             modelBuilder.Entity("db_model.Team.TeamDetails", b =>
                 {
                     b.HasOne("db_model.Team.Team", null)
@@ -1268,6 +1180,28 @@ namespace main_database.Migrations
                         .HasForeignKey("db_model.UserManagement.UserLocationPrivacy", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("exs.notifications_model.Notifications.NotificationToUser", b =>
+                {
+                    b.HasOne("exs.notifications_model.Notifications.Notification", "Notification")
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Notification");
+                });
+
+            modelBuilder.Entity("exs.notifications_model.Transports.FcmQueue", b =>
+                {
+                    b.HasOne("exs.notifications_model.Notifications.Notification", "Notification")
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Notification");
                 });
 
             modelBuilder.Entity("db_model.Team.Team", b =>

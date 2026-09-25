@@ -16,4 +16,8 @@
     <Folder Include="Map\refs\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\server-side-notifications\exs.notifications-model\exs.notifications-model.csproj" />
+  </ItemGroup>
+
 </Project>
