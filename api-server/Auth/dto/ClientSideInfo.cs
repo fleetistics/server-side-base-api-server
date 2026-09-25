@@ -1,5 +1,4 @@
 using System.Text.Json.Serialization;
-using db_model.AppStructure;
 
 namespace api_server.Auth.Dto
 {
@@ -14,7 +13,7 @@ namespace api_server.Auth.Dto
         public string CodeVersion { get; set; } = string.Empty;
         public string PlatformName { get; set; } = string.Empty;
         public short PlatformId { get; set; } = 0;
-        public string FCMToken { get; set; } = string.Empty;
+        public string FCM_FID { get; set; } = string.Empty;
 
     }
 }

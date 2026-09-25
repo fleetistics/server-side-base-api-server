@@ -1,0 +1,28 @@
+1. Service TeamContextService in /src/app.Common/services/team
+create static on app start and does nothing until initiated by StartTeam( teamId:number)
+the period of update is taken from APP_CONFIG
+implement similar to MediaUploadService logic to handleAppStateChange
+
+CurrentTeamId and TeamContext are available as static getters
+
+2. Only single team is being processed
+in case new teamId != currentTeamId - stop periodical update 
+in case teamId == currentTeamId - do nothing
+
+3. Create empty TeamContext (src\app.Commons\dataLayer\model\team\context\team-context.ts)
+call TeamContextController::GetTeamContext and fill 
+
+when fill TeamMapItem TeamMapItem.Label is taken from User.DisplayName
+
+4. Periodically call TeamContextController::GetTeamContextDelta
+and apply delta
+
+5. I need 3 hooks 
+	useTeamHeader() that will be fired on first load of changed team and when context delta updates: TeamHeader, TeamDetails, TeamUploadedMedias
+	data of this hook will be TeamContext
+
+	useTeamMembers() that will be fired on first load of changed team and when context delta updates: Members, Users, UserAlerts
+	data of this hook will be Members from TeamContext
+
+	useTeamMapItems() that will be fired on first load of changed team and when context delta updates: Members, Users, UserAlerts, GpsDeviceMapStates
+	data of this hook will be MapItems from TeamContext

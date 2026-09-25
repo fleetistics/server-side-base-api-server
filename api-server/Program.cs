@@ -286,6 +286,9 @@ try
     builder.Services.AddOpenApi(options =>
     {
         options.AddSchemaTransformer<OptionalPropertySchemaTransformer>();
+        options.AddSchemaTransformer<UnixDateTimeSchemaTransformer>();
+        options.AddSchemaTransformer<PlainNullableSchemaTransformer>();
+        options.AddSchemaTransformer<FloatingPointSchemaTransformer>();
     });
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options =>

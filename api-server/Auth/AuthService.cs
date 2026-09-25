@@ -1,9 +1,10 @@
 using api_server.Auth.Dto;
 using api_server.core;
-using db_model.AppStructure;
 using db_model.Gps;
 using db_model.UserManagement;
 using exs.Database.Commons.Interfaces;
+using exs.modelCommons.AppStructure;
+using exs.modelCommons.UserManagement;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
 using System.Security.Cryptography;
@@ -85,36 +86,36 @@ namespace api_server.Auth
         private Task convertClientSideInfoToSessionClientInfo(ClientSideInfo clientSideInfo, SessionClientInfo sessionClientInfo)
         {
             sessionClientInfo.DeviceUID = clientSideInfo.DeviceUID;
-            sessionClientInfo.FCMToken = clientSideInfo.FCMToken;
+            sessionClientInfo.FCM_FID = clientSideInfo.FCM_FID;
             sessionClientInfo.AppVersion = clientSideInfo.AppVersion;
             sessionClientInfo.CodeVersion = clientSideInfo.CodeVersion;
-            sessionClientInfo.ClientDevicePlatformId = clientSideInfo.PlatformId;
+            sessionClientInfo.PlatformId = clientSideInfo.PlatformId;
             //switch (clientSideInfo.PlatformName.ToLower())
             //{
             //    case "ios":
-            //        sessionClientInfo.ClientDevicePlatformId = ClientDevicePlatform.Ios;
+            //        sessionClientInfo.PlatformId = ClientDevicePlatform.Ios;
             //        break;
             //    case "android":
-            //        sessionClientInfo.ClientDevicePlatformId = ClientDevicePlatform.Android;
+            //        sessionClientInfo.PlatformId = ClientDevicePlatform.Android;
             //        break;
             //    case "windows":
-            //        sessionClientInfo.ClientDevicePlatformId = ClientDevicePlatform.Windows;
+            //        sessionClientInfo.PlatformId = ClientDevicePlatform.Windows;
             //        break;
             //    default:
-            //        sessionClientInfo.ClientDevicePlatformId = ClientDevicePlatform.Unknown;
+            //        sessionClientInfo.PlatformId = ClientDevicePlatform.Unknown;
             //        break;
             //}
             return Task.CompletedTask;
         }
         private void refreshSessionClientInfo(ClientSideInfo clientSideInfo, SessionClientInfo sessionClientInfo)
         {
-            sessionClientInfo.FCMToken = clientSideInfo.FCMToken;
+            sessionClientInfo.FCM_FID = clientSideInfo.FCM_FID;
             sessionClientInfo.AppVersion = clientSideInfo.AppVersion;
             sessionClientInfo.CodeVersion = clientSideInfo.CodeVersion;
         }
         private Task<short> convertClientSideInfoToGpsDeviceProvider(ClientSideInfo clientSideInfo, SessionClientInfo sessionClientInfo)
         {
-            switch (sessionClientInfo.ClientDevicePlatformId)
+            switch (sessionClientInfo.PlatformId)
             {
                 case ClientDevicePlatform.Ios:
                     return Task.FromResult((short)GpsDeviceProvider.Ios);
@@ -186,7 +187,8 @@ namespace api_server.Auth
                         StatusId = GpsDeviceStatus.Active
                     };
                     repository.Create(gpsDevice);
-                    session.MobileGpsDevice = gpsDevice;
+                    await repository.SaveAsync(cancellationToken);
+                    session.MobileGpsDeviceId = gpsDevice.Id;
                 }
                 else
                 {

@@ -16,7 +16,7 @@ namespace api_server.Controllers.Users.Dto
 
 		public DateTime CreatedDate { get; set; }
 		public int? MobileGpsDeviceId { get; set; }
-		public float? Latitude { get; set; }
-		public float? Longitude { get; set; }
+		public double? Latitude { get; set; }
+		public double? Longitude { get; set; }
 	}
 }

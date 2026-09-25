@@ -1,6 +1,8 @@
 ﻿using Microsoft.EntityFrameworkCore;
 
+using db_model.Gps;
 using db_model.UserManagement;
+using exs.modelCommons.UserManagement;
 
 namespace mf.aiApi.mainDatabase.DatabaseContext
 {
@@ -30,26 +32,26 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
                 entity.ToTable("user_source");
                 entity.HasKey(e => new { e.Id });
             });
-            modelBuilder.Entity<UserSession>(entity =>
-            {
-                entity.ToTable("user_session");
-                entity.HasKey(e => new { e.Id });
-                entity.Property(e => e.Id).ValueGeneratedOnAdd();
-                entity.ComplexProperty(e => e.Token);
-                entity.ComplexProperty(e => e.ClientInfo);
-                entity.HasOne(e => e.MobileGpsDevice).WithMany().HasForeignKey(e => e.MobileGpsDeviceId).IsRequired(false);
-                //entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId);
-            });
-            modelBuilder.Entity<UserSessionStatus>(entity =>
-            {
-                entity.ToTable("user_session_status");
-                entity.HasKey(e => new { e.Id });
-            });
-            modelBuilder.Entity<UserSessionSource>(entity =>
-            {
-                entity.ToTable("user_session_source");
-                entity.HasKey(e => new { e.Id });
-            });
+            //modelBuilder.Entity<UserSession>(entity =>
+            //{
+            //    entity.ToTable("user_session");
+            //    entity.HasKey(e => new { e.Id });
+            //    entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            //    entity.ComplexProperty(e => e.Token);
+            //    entity.ComplexProperty(e => e.ClientInfo);
+            //    entity.HasOne<MobileGpsDevice>().WithMany().HasForeignKey(e => e.MobileGpsDeviceId).IsRequired(false);
+            //    //entity.HasOne(e => e.User).WithMany().HasForeignKey(e => e.UserId);
+            //});
+            //modelBuilder.Entity<UserSessionStatus>(entity =>
+            //{
+            //    entity.ToTable("user_session_status");
+            //    entity.HasKey(e => new { e.Id });
+            //});
+            //modelBuilder.Entity<UserSessionSource>(entity =>
+            //{
+            //    entity.ToTable("user_session_source");
+            //    entity.HasKey(e => new { e.Id });
+            //});
             modelBuilder.Entity<UserLocationPrivacy>(entity =>
             {
                 entity.ToTable("user_location_privacy");

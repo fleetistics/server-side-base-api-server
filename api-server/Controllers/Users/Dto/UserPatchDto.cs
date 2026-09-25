@@ -5,6 +5,16 @@ using System.ComponentModel.DataAnnotations;
 namespace api_server.Controllers.Users.Dto
 {
 	/// <summary>
+	/// GroupKey values InsertMedias entries use to tell UserService which User
+	/// image slot a newly-uploaded media belongs to.
+	/// </summary>
+	public enum EditUserGroupKey : short
+	{
+		Avatar = 1,
+		GovID = 2
+	}
+
+	/// <summary>
 	/// Partial-update body for PATCH /api/users/{userId}: only fields the client
 	/// actually changed are present. UserName/StatusId are excluded — UpdateUserAsync
 	/// (the full-PUT path) never touches them either.

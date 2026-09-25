@@ -36,8 +36,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\exs.commons\exs.commons.csproj" />
-    <ProjectReference Include="..\exs.webCommons\exs.webCommons.csproj" />
     <ProjectReference Include="..\main-database\main-database.csproj" />
   </ItemGroup>
 

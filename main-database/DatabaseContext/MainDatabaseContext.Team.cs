@@ -25,7 +25,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			{
 				entity.ToTable("team_member_user");
 				entity.HasKey(e => new { e.TeamId, e.UserId });
-				entity.HasOne<Team>().WithMany().HasForeignKey(e => e.TeamId);
+				entity.HasOne<Team>().WithMany(t => t.Members).HasForeignKey(e => e.TeamId);
 			});
 			modelBuilder.Entity<TeamUploadedMedia>(entity =>
 			{

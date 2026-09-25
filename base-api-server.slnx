@@ -2,10 +2,12 @@
   <Folder Name="/tests/">
     <Project Path="tests/api-server.IntegrationTests/api-server.IntegrationTests.csproj" />
   </Folder>
+  <Project Path="../server-side-commons/exs.commons/exs.commons.csproj" />
+  <Project Path="../server-side-commons/exs.databaseCommons/exs.databaseCommons.csproj" />
+  <Project Path="../server-side-commons/exs.dbContextCommons/exs.dbContextCommons.csproj" />
+  <Project Path="../server-side-commons/exs.modelCommons/exs.modelCommons.csproj" />
+  <Project Path="../server-side-commons/exs.webCommons/exs.webCommons.csproj" />
   <Project Path="api-server/api-server.csproj" />
   <Project Path="db-model/db-model.csproj" />
-  <Project Path="exs.commons/exs.commons.csproj" />
-  <Project Path="exs.databaseCommons/exs.databaseCommons.csproj" />
-  <Project Path="exs.webCommons/exs.webCommons.csproj" />
   <Project Path="main-database/main-database.csproj" />
 </Solution>

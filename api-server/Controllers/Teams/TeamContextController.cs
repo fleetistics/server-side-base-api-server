@@ -28,7 +28,7 @@ namespace api_server.Controllers.Teams
 		[ProducesResponseType(StatusCodes.Status400BadRequest)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
 		[ProducesResponseType(StatusCodes.Status410Gone)]
-		public async Task<IActionResult> GetTeamContextDelta(int teamId, [FromQuery] long? latestUpdateDate, CancellationToken cancellationToken)
+		public async Task<IActionResult> GetTeamContextDelta(int teamId, [FromQuery] long? latestUpdateDate, [FromQuery] int[]? notTeamUserIds, [FromQuery] int[]? requestedUserIds, CancellationToken cancellationToken)
 		{
 			// long (non-nullable) model binding for a missing query value silently falls back to
 			// 0 rather than failing - it doesn't trigger [ApiController]'s automatic 400 the way
@@ -37,7 +37,7 @@ namespace api_server.Controllers.Teams
 			if (latestUpdateDate is null)
 				return BadRequest(new { message = "latestUpdateDate is required." });
 
-			var result = await mTeamContextService.GetTeamContextDeltaAsync(UserId, teamId, latestUpdateDate.Value, cancellationToken);
+			var result = await mTeamContextService.GetTeamContextDeltaAsync(UserId, teamId, latestUpdateDate.Value, notTeamUserIds, requestedUserIds, cancellationToken);
 			return toActionResult(result);
 		}
 

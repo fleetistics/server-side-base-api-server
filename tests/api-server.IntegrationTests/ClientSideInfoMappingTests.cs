@@ -1,6 +1,6 @@
 using System.Reflection;
 using api_server.Auth.Dto;
-using db_model.AppStructure;
+using exs.modelCommons.AppStructure;
 using Shouldly;
 
 namespace api_server.IntegrationTests;
@@ -14,10 +14,11 @@ namespace api_server.IntegrationTests;
 public sealed class ClientSideInfoMappingTests
 {
     // ClientSideInfo.PlatformName (raw string) is deliberately NOT copied verbatim: AuthService
-    // converts it to SessionClientInfo.ClientDevicePlatformId (normalized lookup id) instead of
+    // converts it to SessionClientInfo.PlatformId (normalized lookup id) instead of
     // straight field-by-field copy — so this one pair is excluded from the parity check.
-    private static readonly string[] DtoOnlyExceptions = ["PlatformName"];
-    private static readonly string[] EntityOnlyExceptions = ["ClientDevicePlatformId"];
+    // ClientSideInfo.FCMToken / SessionClientInfo.FCM_FID is the other deliberate rename.
+    private static readonly string[] DtoOnlyExceptions = ["PlatformName", "FCMToken"];
+    private static readonly string[] EntityOnlyExceptions = ["FCM_FID"];
 
     [Fact]
     public void ClientSideInfo_And_SessionClientInfo_HaveMatchingFields()

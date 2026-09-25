@@ -12,8 +12,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="AppStructure\" />
     <Folder Include="Map\refs\" />
-    <Folder Include="Team\NewFolder\" />
   </ItemGroup>
 
 </Project>

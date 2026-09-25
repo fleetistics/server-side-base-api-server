@@ -26,10 +26,10 @@ namespace api_server.Controllers.Users.Dto
 		public int? MobileGpsDeviceId { get; set; }
 		public DateTime CreatedDate { get; set; }
 		public DateTime? CompletedDate { get; set; }
-		public float? Latitude { get; set; }
-		public float? Longitude { get; set; }
-		public float? CompleteLatitude { get; set; }
-		public float? CompleteLongitude { get; set; }
+		public double? Latitude { get; set; }
+		public double? Longitude { get; set; }
+		public double? CompleteLatitude { get; set; }
+		public double? CompleteLongitude { get; set; }
 		public short StatusId { get; set; }
 		public DateTime LatestUpdate { get; set; }
 	}

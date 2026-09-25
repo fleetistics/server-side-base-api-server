@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using exs.dbContextCommons;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace mf.aiApi.mainDatabase.DatabaseContext
@@ -10,12 +11,14 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 
 		protected override void OnModelCreating(ModelBuilder modelBuilder)
 		{
-			createUserModel(modelBuilder);
+			CommonModelContext.CreateModel(modelBuilder);
+
+            createUserModel(modelBuilder);
 			createMediaModel(modelBuilder);
 			createLogModel(modelBuilder);
 			createTranslationModel(modelBuilder);
 			createGpsModel(modelBuilder);
-			createAppStructureModel(modelBuilder);
+			//createAppStructureModel(modelBuilder);
 			createMapModel(modelBuilder);
 			createTeamModel(modelBuilder);
 

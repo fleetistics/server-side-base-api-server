@@ -9,6 +9,7 @@ namespace api_server.Controllers.MapData.Dto
         public MobileGpsDeviceMapStateDto(MobileGpsDeviceMapState model)
         {
             MobileGpsDeviceId = model.MobileGpsDeviceId;
+            UserId = model.UserId;
             Latitude = model.Location.Y;
             Longitude = model.Location.X;
             MotionActivity = model.MotionActivity;
@@ -19,6 +20,7 @@ namespace api_server.Controllers.MapData.Dto
         }
 
         public int MobileGpsDeviceId { get; set; }
+        public int UserId { get; set; }
         public double Latitude { get; set; }
         public double Longitude { get; set; }
         public short? MotionActivity { get; set; }

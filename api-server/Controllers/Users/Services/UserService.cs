@@ -118,16 +118,16 @@ namespace api_server.Controllers.Users.Services
                     user.GovIDImageId = null;
                 }
             }
-            if (newMedias.Count > 0)
+            if (patch.InsertMedias != null && newMedias.Count > 0)
             {
-				var newMediaIdx = patch.InsertMedias.FindIndex(m => m.GroupKey == 1);
+				var newMediaIdx = patch.InsertMedias.FindIndex(m => m.GroupKey == (short)EditUserGroupKey.Avatar);
 				if (newMediaIdx >= 0) user.AvatarImageId = newMedias[newMediaIdx].Id;
 				else
 				{
                     newMediaIdx = patch.InsertMedias.FindIndex(m => m.GroupKey == null);
                     if (newMediaIdx >= 0) user.AvatarImageId = newMedias[newMediaIdx].Id;
                 }
-                newMediaIdx = patch.InsertMedias.FindIndex(m => m.GroupKey == 2);
+                newMediaIdx = patch.InsertMedias.FindIndex(m => m.GroupKey == (short)EditUserGroupKey.GovID);
                 if (newMediaIdx >= 0) user.GovIDImageId = newMedias[newMediaIdx].Id;
             }
 

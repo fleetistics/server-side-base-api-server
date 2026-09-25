@@ -7,7 +7,7 @@ namespace api_server.Controllers.Users.Dto
 	/// </summary>
 	public class CompleteUserEmergencyAlertDto
 	{
-		public float? CompleteLatitude { get; set; }
-		public float? CompleteLongitude { get; set; }
+		public double? CompleteLatitude { get; set; }
+		public double? CompleteLongitude { get; set; }
 	}
 }

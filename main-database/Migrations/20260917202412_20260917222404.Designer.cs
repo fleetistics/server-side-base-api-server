@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -13,9 +14,11 @@ using mf.aiApi.mainDatabase.DatabaseContext;
 namespace main_database.Migrations
 {
     [DbContext(typeof(MainDatabaseContext))]
-    partial class MainDatabaseContextModelSnapshot : ModelSnapshot
+    [Migration("20260917202412_20260917222404")]
+    partial class _20260917222404
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -436,7 +439,7 @@ namespace main_database.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("now()");
 
-                    b.Property<short?>("RoleId")
+                    b.Property<short>("RoleId")
                         .HasColumnType("smallint");
 
                     b.Property<short>("StatusId")
@@ -955,7 +958,55 @@ namespace main_database.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("MobileGpsDeviceId");
+
                     b.ToTable("user_session", (string)null);
+                });
+
+            modelBuilder.Entity("exs.modelCommons.UserManagement.UserSessionSource", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_session_source", (string)null);
+                });
+
+            modelBuilder.Entity("exs.modelCommons.UserManagement.UserSessionStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_session_status", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Team.TeamDetails", b =>
@@ -1034,6 +1085,13 @@ namespace main_database.Migrations
                         .HasForeignKey("db_model.UserManagement.UserLocationPrivacy", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("exs.modelCommons.UserManagement.UserSession", b =>
+                {
+                    b.HasOne("db_model.Gps.MobileGpsDevice", null)
+                        .WithMany()
+                        .HasForeignKey("MobileGpsDeviceId");
                 });
 
             modelBuilder.Entity("db_model.Team.Team", b =>

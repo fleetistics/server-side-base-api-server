@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -13,9 +14,11 @@ using mf.aiApi.mainDatabase.DatabaseContext;
 namespace main_database.Migrations
 {
     [DbContext(typeof(MainDatabaseContext))]
-    partial class MainDatabaseContextModelSnapshot : ModelSnapshot
+    [Migration("20260914111715_20260914131709")]
+    partial class _20260914131709
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -24,6 +27,33 @@ namespace main_database.Migrations
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("db_model.AppStructure.ClientDevicePlatform", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PlatformKeys")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("client_device_platform", (string)null);
+                });
 
             modelBuilder.Entity("db_model.Gps.GpsDevice", b =>
                 {
@@ -436,7 +466,7 @@ namespace main_database.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("now()");
 
-                    b.Property<short?>("RoleId")
+                    b.Property<short>("RoleId")
                         .HasColumnType("smallint");
 
                     b.Property<short>("StatusId")
@@ -769,6 +799,135 @@ namespace main_database.Migrations
                     b.ToTable("user_location_privacy", (string)null);
                 });
 
+            modelBuilder.Entity("db_model.UserManagement.UserSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int?>("MobileGpsDeviceId")
+                        .HasColumnType("integer");
+
+                    b.Property<short>("SessionSourceId")
+                        .HasColumnType("smallint");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "ClientInfo", "db_model.UserManagement.UserSession.ClientInfo#SessionClientInfo", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<string>("AppUID")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("AppVersion")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<short>("ClientDevicePlatformId")
+                                .HasColumnType("smallint");
+
+                            b1.Property<string>("CodeVersion")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("DeviceUID")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("FCMToken")
+                                .IsRequired()
+                                .HasColumnType("text");
+                        });
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Token", "db_model.UserManagement.UserSession.Token#SessionTokenInfo", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<DateTime>("CreationTime")
+                                .HasColumnType("timestamp with time zone");
+
+                            b1.Property<DateTime>("ExpirationTime")
+                                .HasColumnType("timestamp with time zone");
+
+                            b1.Property<DateTime>("LatestRefreshTime")
+                                .HasColumnType("timestamp with time zone");
+
+                            b1.Property<string>("PreviousSessionRotationKey")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("SessionRotationKey")
+                                .IsRequired()
+                                .HasColumnType("text");
+                        });
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MobileGpsDeviceId");
+
+                    b.ToTable("user_session", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.UserManagement.UserSessionSource", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_session_source", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.UserManagement.UserSessionStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_session_status", (string)null);
+                });
+
             modelBuilder.Entity("db_model.UserManagement.UserSettings", b =>
                 {
                     b.Property<int>("Id")
@@ -850,114 +1009,6 @@ namespace main_database.Migrations
                     b.ToTable("user_status", (string)null);
                 });
 
-            modelBuilder.Entity("exs.modelCommons.AppStructure.ClientDevicePlatform", b =>
-                {
-                    b.Property<short>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("smallint");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
-
-                    b.Property<DateTime>("LatestUpdate")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("PlatformKeys")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("client_device_platform", (string)null);
-                });
-
-            modelBuilder.Entity("exs.modelCommons.UserManagement.UserSession", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("LatestUpdate")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<int?>("MobileGpsDeviceId")
-                        .HasColumnType("integer");
-
-                    b.Property<short>("SessionSourceId")
-                        .HasColumnType("smallint");
-
-                    b.Property<short>("StatusId")
-                        .HasColumnType("smallint");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("integer");
-
-                    b.ComplexProperty(typeof(Dictionary<string, object>), "ClientInfo", "exs.modelCommons.UserManagement.UserSession.ClientInfo#SessionClientInfo", b1 =>
-                        {
-                            b1.IsRequired();
-
-                            b1.Property<string>("AppUID")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("AppVersion")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("CodeVersion")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("DeviceUID")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("FCM_FID")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<short>("PlatformId")
-                                .HasColumnType("smallint");
-                        });
-
-                    b.ComplexProperty(typeof(Dictionary<string, object>), "Token", "exs.modelCommons.UserManagement.UserSession.Token#SessionTokenInfo", b1 =>
-                        {
-                            b1.IsRequired();
-
-                            b1.Property<DateTime>("CreationTime")
-                                .HasColumnType("timestamp with time zone");
-
-                            b1.Property<DateTime>("ExpirationTime")
-                                .HasColumnType("timestamp with time zone");
-
-                            b1.Property<DateTime>("LatestRefreshTime")
-                                .HasColumnType("timestamp with time zone");
-
-                            b1.Property<string>("PreviousSessionRotationKey")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("SessionRotationKey")
-                                .IsRequired()
-                                .HasColumnType("text");
-                        });
-
-                    b.HasKey("Id");
-
-                    b.ToTable("user_session", (string)null);
-                });
-
             modelBuilder.Entity("db_model.Team.TeamDetails", b =>
                 {
                     b.HasOne("db_model.Team.Team", null)
@@ -1034,6 +1085,15 @@ namespace main_database.Migrations
                         .HasForeignKey("db_model.UserManagement.UserLocationPrivacy", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.UserManagement.UserSession", b =>
+                {
+                    b.HasOne("db_model.Gps.MobileGpsDevice", "MobileGpsDevice")
+                        .WithMany()
+                        .HasForeignKey("MobileGpsDeviceId");
+
+                    b.Navigation("MobileGpsDevice");
                 });
 
             modelBuilder.Entity("db_model.Team.Team", b =>

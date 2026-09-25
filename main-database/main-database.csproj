@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\server-side-commons\exs.dbContextCommons\exs.dbContextCommons.csproj" />
     <ProjectReference Include="..\db-model\db-model.csproj" />
     <ProjectReference Include="..\exs.databaseCommons\exs.databaseCommons.csproj" />
   </ItemGroup>
