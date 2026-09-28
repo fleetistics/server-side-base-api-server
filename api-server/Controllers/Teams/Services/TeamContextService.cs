@@ -10,6 +10,7 @@ using db_model.Map;
 using db_model.Messages;
 using db_model.Team;
 using db_model.UserManagement;
+using DotLiquid.Tags;
 using exs.Commons.Utils;
 using exs.Database.Commons.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -121,7 +122,7 @@ namespace api_server.Controllers.Teams.Services
 			}
 
 			var messages = await mRepository.GetQueryable<UserMessage>().Include(u => u.UserMessage2Users.Where(u => u.UserId == currentUserId))
-                .Where(e => (e.UserId == currentUserId || e.ToUserId == currentUserId || e.ToUserId == null) && (e.TeamId == teamId || e.TeamId == null))
+                .Where(e => (e.UserId == currentUserId || e.ToUserId == currentUserId || e.ToUserId == null) && (e.TeamId == teamId ))
 				.AsNoTracking().ToListAsync(cancellationToken);
 
 			if(messages != null)
@@ -191,13 +192,13 @@ namespace api_server.Controllers.Teams.Services
             }
 			else
 			{
-				delta.MobileGpsDevices = await loadAllDevicesAsync(allMemberIds, cancellationToken);
-				delta.GpsDeviceMapStates = await loadMapStatesAsync(nonPrivateMemberIds, since: null, cancellationToken);
-				delta.UserAlerts = await loadActiveAlertsAsync(allMemberIds, since: null, cancellationToken);
+				delta.MobileGpsDevices = await mRepository.GetQueryable<MobileGpsDevice>(e => e.UserId != null && allMemberIds.Contains(e.UserId.Value) && e.StatusId == GpsDeviceStatus.Active).Select(s => new MobileGpsDeviceDto(s)).ToListAsync(cancellationToken);
+                delta.GpsDeviceMapStates = await mRepository.GetQueryable<MobileGpsDeviceMapState>(e => nonPrivateMemberIds.Contains(e.UserId) ).Select(s => new MobileGpsDeviceMapStateDto(s)).ToListAsync(cancellationToken);
+				delta.UserAlerts = await mRepository.GetQueryable<UserEmergencyAlert>(e => allMemberIds.Contains(e.UserId) && e.StatusId == UserEmergencyAlertStatus.Active).Select(s => new ActiveUserEmergencyAlertDto(s)).ToListAsync(cancellationToken);
 
-				// loadDevicesAsync/etc. always return a list, even when empty - null it back out
-				// so an empty collection is omitted from the wire, same as every sibling field here.
-				if (delta.MobileGpsDevices.Count == 0) delta.MobileGpsDevices = null;
+                // loadDevicesAsync/etc. always return a list, even when empty - null it back out
+                // so an empty collection is omitted from the wire, same as every sibling field here.
+                if (delta.MobileGpsDevices.Count == 0) delta.MobileGpsDevices = null;
 				if (delta.GpsDeviceMapStates.Count == 0) delta.GpsDeviceMapStates = null;
 				if (delta.UserAlerts.Count == 0) delta.UserAlerts = null;
                 if (delta.UserLocationPrivacies.Count == 0) delta.UserLocationPrivacies = null;
@@ -217,6 +218,8 @@ namespace api_server.Controllers.Teams.Services
             {
                 delta.Users = null;
             }
+            if (delta.UserMessages?.Count == 0) delta.UserMessages = null;
+            if (delta.TeamActivities?.Count == 0) delta.TeamActivities = null;
             delta.LastUpdate = roundUpToSecond(team.Now);
 			return TeamContextUpdateResult.Updated(delta);
 		}
@@ -257,17 +260,17 @@ namespace api_server.Controllers.Teams.Services
 					(delta.TeamUploadedMedias ??= new()).Add(toMediaDto(m));
 			}
 
-            var extraUserIds = new HashSet<int>(requestedUserIds ?? Array.Empty<int>());
+            var loadNotTeamUserIds = new HashSet<int>(requestedUserIds ?? Array.Empty<int>());
             var messages = await mRepository.GetQueryable<UserMessage>().Include(u => u.UserMessage2Users.Where(u => u.UserId == currentUserId))
-                .Where(e => ((e.UserId == currentUserId || e.ToUserId == currentUserId || e.ToUserId == null) && (e.TeamId == teamId || e.TeamId == null)) && e.LatestUpdate > since)
+                .Where(e => ((e.UserId == currentUserId || e.ToUserId == currentUserId || e.ToUserId == null) && (e.TeamId == teamId )) && e.LatestUpdate > since)
                 .AsNoTracking().ToListAsync(cancellationToken);
             if (messages != null)
             {
                 delta.UserMessages = new List<UserMessageDto>();
                 foreach (var message in messages)
                 {
-                    if (message.UserId != currentUserId) extraUserIds.Add(message.UserId);
-                    if (message.ToUserId != null && message.ToUserId != currentUserId) extraUserIds.Add(message.ToUserId.Value);
+                    if (message.UserId != currentUserId) loadNotTeamUserIds.Add(message.UserId);
+                    if (message.ToUserId != null && message.ToUserId != currentUserId) loadNotTeamUserIds.Add(message.ToUserId.Value);
                     var tmpMessage = new UserMessageDto(message);
                     foreach (var message2User in message.UserMessage2Users)
                     {
@@ -287,7 +290,7 @@ namespace api_server.Controllers.Teams.Services
                 delta.TeamActivities = new List<TeamActivityDto>();
                 foreach (var activity in teamActivities)
                 {
-                    if (activity.UserId != null && activity.UserId != currentUserId) extraUserIds.Add(activity.UserId.Value);
+                    if (activity.UserId != null && activity.UserId != currentUserId) loadNotTeamUserIds.Add(activity.UserId.Value);
                     var tmpEntity = new TeamActivityDto(activity);
                     foreach (var activity2User in activity.TeamActivity2Users)
                     {
@@ -308,45 +311,96 @@ namespace api_server.Controllers.Teams.Services
 				if (updatedTeamPrimaryTargetUser.TargetUserId == null) delta.DoRemoveTeamPrimaryTargetUser = true;
 				else {
 					delta.TeamPrimaryTargetUser = updatedTeamPrimaryTargetUser;
-                    extraUserIds.Add(updatedTeamPrimaryTargetUser.TargetUserId.Value);
+                    loadNotTeamUserIds.Add(updatedTeamPrimaryTargetUser.TargetUserId.Value);
                 }
             }
 
+			if (notTeamUserIds?.Length > 0) loadNotTeamUserIds.ExceptWith(notTeamUserIds);
             var teamUserIds = new List<int>();
-            HashSet<int> nonPrivateMemberIds = null;
-            var fullReloadUserIds = new List<int>();
-            //var tmpUsers = new List<User>();
-            var userIdToRemoveCandidate = new HashSet<int>();
-            foreach (var row in members)
+            var loadTeamUserIds = new List<int>();
+            var loadMapStateUserIds = new List<int>();
+            var loadMemberDetailsUserIds = new List<int>();
+			foreach (var row in members)
 			{
 				if (row.UserId == currentUserId) continue;
-                if (row.LatestUpdate > since)
+
+				if (row.LatestUpdate > since)
 				{
+
 					if (row.StatusId == TeamMemberUserStatus.Active)
 					{
 						(delta.Members ??= new()).Add(new TeamMemberUserDto(row));
-						fullReloadUserIds.Add(row.UserId);
-                        extraUserIds.Remove(row.UserId);
-                    }
+
+						//in case user is already memmber but updated the roles - to clean all records and load again
+                        (delta.RemoveMemberUserIds ??= new()).Add(row.UserId);
+                        loadTeamUserIds.Add(row.UserId);
+
+                        loadNotTeamUserIds.Remove(row.UserId);
+                        loadMapStateUserIds.Add(row.UserId);
+                        loadMemberDetailsUserIds.Add(row.UserId);
+					}
 					else
 					{
 						(delta.RemoveMemberUserIds ??= new()).Add(row.UserId);
-                        userIdToRemoveCandidate.Add(row.UserId);
+                        if (!loadNotTeamUserIds.Contains(row.UserId) && !(notTeamUserIds?.Contains(row.UserId) == true)) (delta.RemoveUserIds ??= new()).Add(row.UserId);
 
                     }
 
 				}
-				else teamUserIds.Add(row.UserId);
+				else
+				{
+					teamUserIds.Add(row.UserId);
+                    loadNotTeamUserIds.Remove(row.UserId);
+				}
+			}
+            
+            if (teamUserIds.Count > 0 || notTeamUserIds?.Length > 0 || loadNotTeamUserIds.Count > 0 || loadTeamUserIds.Count > 0)
+            {
+                var updateUserIds = new HashSet<int>(teamUserIds);
+                if (notTeamUserIds?.Length > 0) updateUserIds.UnionWith(notTeamUserIds);
+                var loadUserIds = new HashSet<int>(loadNotTeamUserIds);
+                loadUserIds.UnionWith(loadTeamUserIds);
+                var updatedUsers = await mRepository.GetQueryable<User>(e => (updateUserIds.Contains(e.Id) && e.LatestUpdate > since) || loadUserIds.Contains(e.Id))
+                        .Include(u => u.AvatarImage)
+                        .Include(u => u.GovIDImage)
+                        .AsNoTracking()
+                        .ToListAsync(cancellationToken);
+                foreach (var user in updatedUsers)
+                {
+					if (user.StatusId == UserStatus.Active)
+					{
+                        (delta.Users ??= new()).Add(toUserDto(user));
+                    }
+					else
+					{
+                        if (teamUserIds.Contains(user.Id) || loadTeamUserIds.Contains(user.Id))
+						{
+                            teamUserIds.Remove(user.Id);
+                            loadTeamUserIds.Remove(user.Id);
+                            loadMapStateUserIds.Remove(user.Id);
+                            loadMemberDetailsUserIds.Add(user.Id);
+                            (delta.RemoveMemberUserIds ??= new()).Add(user.Id);
+                            if (notTeamUserIds?.Contains(user.Id) == true || loadNotTeamUserIds.Contains(user.Id))
+                            {
+                                (delta.Users ??= new()).Add(toUserDto(user));
+                            }
+                            else (delta.RemoveUserIds ??= new()).Add(user.Id);
+
+                        }
+						else (delta.Users ??= new()).Add(toUserDto(user));
+
+                    }
+                }
             }
-            var fullReloadMapStateIds = new HashSet<int>(teamUserIds);
-            if (teamUserIds.Count > 0)
+            var updateMapStateUserIds = new HashSet<int>(teamUserIds);
+
+            if (teamUserIds.Count > 0 || loadTeamUserIds.Count > 0)
 			{
 				delta.UserLocationPrivacies = new List<UserLocationPrivacyDto>();
 				delta.RemoveUserLocationPrivacyIds = new List<int>();
 				delta.RemoveGpsDeviceMapStateIds = new List<int>();
-				nonPrivateMemberIds = new HashSet<int>(teamUserIds);
 				
-				var privateUsers = await mRepository.GetQueryable<UserLocationPrivacy>(e => teamUserIds.Contains(e.UserId))
+				var privateUsers = await mRepository.GetQueryable<UserLocationPrivacy>(e => teamUserIds.Contains(e.UserId) || loadTeamUserIds.Contains(e.UserId))
 					.AsNoTracking()
 					.ToListAsync(cancellationToken);
 				foreach (var userPrivacy in privateUsers)
@@ -355,9 +409,9 @@ namespace api_server.Controllers.Teams.Services
 					{
 						if (userPrivacy.LatestUpdate > since)
 						{
-							fullReloadMapStateIds.Add(userPrivacy.UserId);
+                            loadMapStateUserIds.Add(userPrivacy.UserId);
 							delta.RemoveUserLocationPrivacyIds.Add(userPrivacy.UserId);
-							nonPrivateMemberIds.Remove(userPrivacy.UserId);
+                            updateMapStateUserIds.Remove(userPrivacy.UserId);
 						}
 					}
 					else {
@@ -367,206 +421,57 @@ namespace api_server.Controllers.Teams.Services
 							delta.RemoveGpsDeviceMapStateIds.Add(userPrivacy.UserId);
 
 						}
-						nonPrivateMemberIds.Remove(userPrivacy.UserId);
-						//(delta.RemoveMemberUserIds ??= new()).Add(userPrivacy.UserId);
-						//userIdToRemoveCandidate.Add(userPrivacy.UserId);
-					}
-				}
-
-			}
-			if (teamUserIds.Count > 0 || notTeamUserIds?.Length > 0)
-			{
-				var tmpUserIds = new HashSet<int>(teamUserIds);
-				if (notTeamUserIds?.Length > 0) tmpUserIds.UnionWith(notTeamUserIds);
-            var updatedUsers = await mRepository.GetQueryable<User>(e => tmpUserIds.Contains(e.Id) && e.LatestUpdate > since)
-					.Include(u => u.AvatarImage)
-					.Include(u => u.GovIDImage)
-					.AsNoTracking()
-					.ToListAsync(cancellationToken);
-				foreach (var user in updatedUsers)
-				{
-					if (user.StatusId != UserStatus.Active)
-					{
-						if (teamUserIds.Contains(user.Id))
-						{
-							teamUserIds.Remove(user.Id);
-							nonPrivateMemberIds?.Remove(user.Id);
-							(delta.RemoveMemberUserIds ??= new()).Add(user.Id);
-							if (extraUserIds.Contains(user.Id))
-							{
-								(delta.Users ??= new()).Add(toUserDto(user));
-								extraUserIds.Remove(user.Id);
-							}
-							else userIdToRemoveCandidate.Add(user.Id);
-						}
-						else
-						{
-							(delta.Users ??= new()).Add(toUserDto(user));
-							extraUserIds.Remove(user.Id);
-						}
-					}
-					else
-					{
-						(delta.Users ??= new()).Add(toUserDto(user));
-                        extraUserIds.Remove(user.Id);
+                        loadMapStateUserIds.Remove(userPrivacy.UserId);
+                        updateMapStateUserIds.Remove(userPrivacy.UserId);
                     }
 				}
+
 			}
-            if (teamUserIds.Count > 0)
-            {
-
-                var (updatesDevices, removeDeviceIds) = await loadDeltaDevicesAsync(teamUserIds, since, cancellationToken);
-                if (updatesDevices != null) (delta.MobileGpsDevices ??= new()).AddRange(updatesDevices);
-                delta.RemoveMobileGpsDeviceIds = removeDeviceIds;
-				if (nonPrivateMemberIds?.Count > 0) (delta.GpsDeviceMapStates ??= new()).AddRange(await loadMapStatesAsync(nonPrivateMemberIds, since, cancellationToken));
-
-                var alerts = await mRepository.GetQueryable<UserEmergencyAlert>(e => teamUserIds.Contains(e.UserId) && e.LatestUpdate > since)
+			if (updateMapStateUserIds.Count > 0 || loadMapStateUserIds.Count > 0)
+			{
+                delta.GpsDeviceMapStates = await mRepository.GetQueryable<MobileGpsDeviceMapState>(e => (updateMapStateUserIds.Contains(e.UserId) && e.LatestOnMapUpdate > since) || loadMapStateUserIds.Contains(e.UserId)).Select(s => new MobileGpsDeviceMapStateDto(s)).ToListAsync(cancellationToken);
+            }
+            if (teamUserIds.Count > 0 || loadMemberDetailsUserIds.Count > 0)
+			{
+                var alerts = await mRepository.GetQueryable<UserEmergencyAlert>(e => (teamUserIds.Contains(e.UserId) && e.LatestUpdate > since) || loadMemberDetailsUserIds.Contains(e.UserId))
                     .AsNoTracking()
                     .ToListAsync(cancellationToken);
                 foreach (var alert in alerts)
                 {
-                    if (alert.StatusId == UserEmergencyAlertStatus.Active)
-                        (delta.UserAlerts ??= new()).Add(new ActiveUserEmergencyAlertDto(alert));
+					if (alert.StatusId == UserEmergencyAlertStatus.Active)
+						(delta.UserAlerts ??= new()).Add(new ActiveUserEmergencyAlertDto(alert));
+					else
+					{
+						(delta.RemoveUserAlertIds ??= new()).Add(alert.Id);
+					}
+                }
+
+                var devices = await mRepository.GetQueryable<MobileGpsDevice>(e => e.UserId != null && ((teamUserIds.Contains(e.UserId.Value) && e.LatestUpdate > since) || loadMemberDetailsUserIds.Contains(e.UserId.Value))).AsNoTracking().ToListAsync(cancellationToken);
+                foreach (var device in devices)
+                {
+                    if (device.StatusId == GpsDeviceStatus.Active)
+                        (delta.MobileGpsDevices ??= new()).Add(new MobileGpsDeviceDto(device));
                     else
-                        (delta.RemoveUserAlertIds ??= new()).Add(alert.Id);
+                    {
+                        (delta.RemoveMobileGpsDeviceIds ??= new()).Add(device.Id);
+                    }
                 }
-            }
-            if (fullReloadMapStateIds.Count > 0) (delta.GpsDeviceMapStates ??= new()).AddRange(await loadMapStatesAsync(fullReloadMapStateIds, since: null, cancellationToken));
-
-			if (notTeamUserIds?.Length > 0) extraUserIds.UnionWith(notTeamUserIds);
-			if (requestedUserIds?.Length > 0) extraUserIds.UnionWith(requestedUserIds);
-            if (fullReloadUserIds.Count > 0)
-			{
-                (delta.RemoveUserIds ??= new()).AddRange(fullReloadUserIds);
-                var fullReloadUsers = await mRepository.GetQueryable<User>(e => fullReloadUserIds.Contains(e.Id))
-					.Include(u => u.AvatarImage)
-					.Include(u => u.GovIDImage)
-					.Include(u => u.LocationPrivacy)
-					.AsNoTracking()
-					.ToListAsync(cancellationToken);
-				foreach (var user in fullReloadUsers)
-				{
-					if (user.StatusId != UserStatus.Active )
-					{
-                        fullReloadUserIds.Remove(user.Id);
-                        if (extraUserIds.Contains(user.Id) )
-                        {
-                            (delta.Users ??= new()).Add(toUserDto(user));
-                            extraUserIds.Remove(user.Id);
-                        }
-					}
-					else
-					{
-                        (delta.Users ??= new()).Add(toUserDto(user));
-                        extraUserIds.Remove(user.Id);
-
-                        if (user.LocationPrivacy?.PrivacyMode > 0)
-						{
-							delta.UserLocationPrivacies.Add(new UserLocationPrivacyDto(user.LocationPrivacy));
-						}
-					}
-
-
-
-                    if (user.StatusId != UserStatus.Active || user.LocationPrivacy?.PrivacyMode > 0)
-					{
-						fullReloadUserIds.Remove(user.Id);
-						(delta.RemoveMemberUserIds ??= new()).Add(user.Id);
-						if (extraUserIds.Contains(user.Id) )
-						{
-							(delta.Users ??= new()).Add(toUserDto(user));
-							extraUserIds.Remove(user.Id);
-                        }
-
-					}
-					else
-					{
-						(delta.Users ??= new()).Add(toUserDto(user));
-						extraUserIds.Remove(user.Id);
-					}
-                }
-				var (updatesDevices, removeDeviceIds) = await loadDeltaDevicesAsync(fullReloadUserIds, since, cancellationToken);
-                if (updatesDevices != null) (delta.MobileGpsDevices ??= new()).AddRange(updatesDevices);
-				delta.RemoveMobileGpsDeviceIds = removeDeviceIds;
-                (delta.GpsDeviceMapStates ??= new()).AddRange(await loadMapStatesAsync(fullReloadUserIds, since: null, cancellationToken) );
-				(delta.UserAlerts ??= new()).AddRange(await loadActiveAlertsAsync(fullReloadUserIds, since: null, cancellationToken) );
-			}
-
-			if (extraUserIds.Count > 0)
-			{
-
-                    (delta.Users ??= new()).AddRange( await mRepository.GetQueryable<User>(e => extraUserIds.Contains(e.Id))
-                    .Include(u => u.AvatarImage)
-                    .Include(u => u.GovIDImage)
-					.Select( e=> toUserDto(e))
-                    .ToListAsync(cancellationToken));
-                userIdToRemoveCandidate.ExceptWith(extraUserIds);
-            }
-
-            if (userIdToRemoveCandidate.Count > 0)
-            {
-                (delta.RemoveUserIds ??= new()).AddRange(userIdToRemoveCandidate);
             }
 
 			if (delta.MobileGpsDevices?.Count == 0) delta.MobileGpsDevices = null;
 			if (delta.GpsDeviceMapStates?.Count == 0) delta.GpsDeviceMapStates = null;
 			if (delta.UserAlerts?.Count == 0) delta.UserAlerts = null;
-
-			
+			if (delta.UserLocationPrivacies?.Count == 0) delta.UserLocationPrivacies = null;
+			if (delta.RemoveUserLocationPrivacyIds?.Count == 0) delta.RemoveUserLocationPrivacyIds = null;
+			if (delta.RemoveGpsDeviceMapStateIds?.Count == 0) delta.RemoveGpsDeviceMapStateIds = null;
+			if (delta.UserMessages?.Count == 0) delta.UserMessages = null;
+			if (delta.TeamActivities?.Count == 0) delta.TeamActivities = null;
 
 			if (!hasChanges(delta)) return TeamContextUpdateResult.NotModified;
             delta.LastUpdate = roundUpToSecond(team.Now);
 
             return TeamContextUpdateResult.Updated(delta);
 		}
-
-		private async Task<List<MobileGpsDeviceDto>> loadAllDevicesAsync(IReadOnlyCollection<int> userIds, CancellationToken cancellationToken)
-		{
-			var devices = await mRepository.GetQueryable<MobileGpsDevice>(e => e.UserId != null && userIds.Contains(e.UserId!.Value) && e.StatusId == GpsDeviceStatus.Active)
-				.Select(s => new MobileGpsDeviceDto(s)).ToListAsync(cancellationToken);
-            return devices.Count > 0 ? devices : new();
-		}
-        private async Task<(List<MobileGpsDeviceDto>? updatesDevices, List<int>? removeDeviceIds)> loadDeltaDevicesAsync(IReadOnlyCollection<int> userIds, DateTime since, CancellationToken cancellationToken)
-        {
-			var query = await mRepository.GetQueryable<MobileGpsDevice>(e => e.UserId != null && userIds.Contains(e.UserId!.Value) && e.LatestUpdate > since)
-				.AsNoTracking().ToListAsync(cancellationToken);
-			if (query != null)
-			{
-				var updatesDevices = new List<MobileGpsDeviceDto>();
-				var removeDeviceIds = new List<int>();
-				foreach (var device in query)
-				{
-					if (device.StatusId == GpsDeviceStatus.Active) updatesDevices.Add(new MobileGpsDeviceDto(device));
-					else removeDeviceIds.Add(device.Id);
-				}
-				return (updatesDevices.Count > 0 ? updatesDevices : null, removeDeviceIds:(removeDeviceIds.Count > 0 ? removeDeviceIds : null));
-			}
-			else return (null, null);
-        }
-        private async Task<List<MobileGpsDeviceMapStateDto>> loadMapStatesAsync(IReadOnlyCollection<int> userIds, DateTime? since, CancellationToken cancellationToken)
-		{
-			var query = mRepository.GetQueryable<MobileGpsDeviceMapState>(e => userIds.Contains(e.UserId));
-			if (since.HasValue)
-			{
-				var sinceValue = since.Value;
-				query = query.Where(e => e.LatestOnMapUpdate > sinceValue);
-			}
-			var states = await query.AsNoTracking().ToListAsync(cancellationToken);
-			return states.Count > 0 ? states.Select(s => new MobileGpsDeviceMapStateDto(s)).ToList() : new();
-		}
-
-		private async Task<List<ActiveUserEmergencyAlertDto>> loadActiveAlertsAsync(IReadOnlyCollection<int> userIds, DateTime? since, CancellationToken cancellationToken)
-		{
-			var query = mRepository.GetQueryable<UserEmergencyAlert>(e => userIds.Contains(e.UserId) && e.StatusId == UserEmergencyAlertStatus.Active);
-			if (since.HasValue)
-			{
-				var sinceValue = since.Value;
-				query = query.Where(e => e.LatestUpdate > sinceValue);
-			}
-			var alerts = await query.AsNoTracking().ToListAsync(cancellationToken);
-			return alerts.Count > 0 ? alerts.Select(s => new ActiveUserEmergencyAlertDto(s)).ToList() : new();
-		}
-
 		private UserDto toUserDto(User user)
 		{
 			var dto = new UserDto(user);
@@ -600,7 +505,10 @@ namespace api_server.Controllers.Teams.Services
 			delta.RemoveUserAlertIds is { Count: > 0 } ||
 			delta.UserMessages is { Count: > 0 } ||
 			delta.RemoveUserMessageIds is { Count: > 0 } ||
-			delta.TeamActivities is { Count: > 0 };
+			delta.TeamActivities is { Count: > 0 } ||
+			delta.UserLocationPrivacies is { Count: > 0 } ||
+			delta.RemoveUserLocationPrivacyIds is { Count: > 0 } ||
+			delta.RemoveGpsDeviceMapStateIds is { Count: > 0 };
 
 		// TeamContextDelta.LastUpdate round-trips through the API as a whole-second unix
 		// timestamp (DateTimeNullable2UnixSerializer truncates). Rounding up here - rather than
