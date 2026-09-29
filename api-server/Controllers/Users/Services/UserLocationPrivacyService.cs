@@ -1,5 +1,6 @@
 using api_server.Controllers.Users.Dto;
 using db_model.UserManagement;
+using exs.Commons.Utils;
 using exs.Database.Commons.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -38,7 +39,7 @@ namespace api_server.Controllers.Users.Services
 		{
 			var entity = await mRepository.GetQueryable<UserLocationPrivacy>(e => e.UserId == userId)
 				.FirstOrDefaultAsync(cancellationToken);
-            mLogger.LogInformation($"PatchUserLocationPrivacyAsync: userId={userId}, patch.PrivacyMode={patch.PrivacyMode} {entity}");
+            mLogger.LogInformation($"PatchUserLocationPrivacyAsync: userId={userId}, patch.PrivacyMode={patch.PrivacyMode} {JsonHelper.ToJsonIndentedString(entity)}");
 
 			if (entity == null)
 			{
