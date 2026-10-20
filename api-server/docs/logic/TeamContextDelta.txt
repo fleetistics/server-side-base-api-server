@@ -6,21 +6,23 @@ controller TeamContextController
 two separate endpoints/service methods, not one with an optional param:
   TeamContextService.GetTeamContext( int currentUserId, int teamId) returns TeamContextDelta - full snapshot
   TeamContextService.GetTeamContextDelta( int currentUserId, int teamId, long latestUpdateDate) returns TeamContextDelta - only what changed
-  latestUpdateDate as integer unix time; required on the delta endpoint (missing - not just "0" - is rejected with 400, since a bindable
+  latestUpdateDate as integer unix time in MILLISECONDS (the long TeamContextDelta.LastUpdate of the previous call, echoed back unchanged); required on the delta endpoint (missing - not just "0" - is rejected with 400, since a bindable
   non-nullable long silently defaults to 0 instead of failing model binding, so the controller binds it as long? and checks for null itself)
 
 finalLatestUpdate is captured once per call, not accumulated as a max over every record touched:
 the very first query of the method (the Team lookup) also selects DateTime.UtcNow in the same
 .Select(...) projection - the Npgsql provider translates that to the database's own now(), not
 the app server's clock, so finalLatestUpdate never depends on app-server/DB clock agreement
-across however many app instances sit behind the load balancer. Round this value UP to the next
-whole second before assigning it to TeamContextDelta.LastUpdate: LastUpdate travels over the wire
-as a whole-second unix timestamp (floors on serialization), and flooring instead of rounding up
-would let a client that echoes it back as its next latestUpdateDate see an already-reported
-record (including this call's own baseline rows, if setup and this call land in the same second)
-look "changed" again. The cost is symmetrical, not one-sided: a genuinely new change landing in
-the same second this rounds up into is simply picked up on the client's next poll instead of this
-one - normal, bounded (< 1s) polling latency, not a missed update.
+across however many app instances sit behind the load balancer. Convert this value to unix
+MILLISECONDS, rounded DOWN, and assign it to TeamContextDelta.LastUpdate, which is a plain long
+(it bypasses the whole-second DateTime serializer); the client sends it back as latestUpdateDate
+and the server turns it into a DateTime with DateTimeOffset.FromUnixTimeMilliseconds.
+Never round UP: a cursor ahead of the server's "now" lets a row committed after this call's
+queries but before the rounded-up instant get LatestUpdate <= cursor, so the next delta
+(LatestUpdate > since) skips it forever - e.g. a new TeamMemberUser whose map state then keeps
+arriving without any Member/User record. Rounding down only makes a row stamped within the last
+millisecond appear once more on the next call, which is harmless because the client applies every
+record as an upsert.
 
 the currentUserId is taken in Controller from Indentity Claim
 the currentUserId is excluded from returned User, MapState, Alert
@@ -53,7 +55,7 @@ load MobileGpsDevices with UserId in userIds and add MobileGpsDeviceDtos to Team
 load MobileGpsDeviceMapStates with UserId in userIds and add MobileGpsDeviceMapStateDtos to TeamContextDelta.GpsDeviceMapStates
 load UserEmergencyAlerts with UserId in userIds and UserEmergencyAlert.StatusId == UserEmergencyAlertStatus.Active and add UserEmergencyAlertDtos to TeamContextDelta.UserAlerts
 
-1.6. set finalLatestUpdate (rounded up, see above) to TeamContextDelta.LastUpdate
+1.6. set finalLatestUpdate (unix milliseconds, rounded down, see above) to TeamContextDelta.LastUpdate
 
 
 2. GetTeamContextDelta (only what changed since latestUpdateDate)
@@ -124,4 +126,4 @@ load UserEmergencyAlert with UserId in teamUserIds and LatestUpdate > latestUpda
 
 in case nothing was changed in TeamContextDelta - return 204
 
-2.8. set finalLatestUpdate (rounded up, see above) to TeamContextDelta.LastUpdate
+2.8. set finalLatestUpdate (unix milliseconds, rounded down, see above) to TeamContextDelta.LastUpdate

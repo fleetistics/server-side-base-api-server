@@ -1,6 +1,6 @@
 using db_model.Team;
 
-namespace api_server.Controllers.Teams.Dto
+namespace api_server.Teams
 {
 	public class TeamMemberUserDto
 	{

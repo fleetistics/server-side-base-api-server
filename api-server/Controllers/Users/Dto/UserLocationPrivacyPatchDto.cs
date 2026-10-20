@@ -1,6 +1,6 @@
 using exs.commons.Json;
 
-namespace api_server.Controllers.Users.Dto
+namespace api_server.Users
 {
 	/// <summary>Partial-update body for PATCH /api/users/me/location-privacy.</summary>
 	public class UserLocationPrivacyPatchDto

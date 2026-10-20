@@ -9,6 +9,7 @@ namespace db_model.Map
     {
         public int Id { get; set; }
         public int MobileGpsDeviceId { get; set; }
+        public int? TeamId { get; set; }
         public DateTime ReceivedDate { get; set; }
         public DateTime DeviceDate { get; set; }
         public Point Location { get; set; } = default!;

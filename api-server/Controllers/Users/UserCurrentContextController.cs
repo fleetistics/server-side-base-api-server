@@ -1,8 +1,7 @@
 using api_server.Controllers.Base;
-using api_server.Controllers.Users.Services;
 using Microsoft.AspNetCore.Mvc;
 
-namespace api_server.Controllers.Users
+namespace api_server.Users
 {
 	public class UserCurrentContextController : AuthAPIController
 	{

@@ -1,9 +1,8 @@
-using api_server.Controllers.Users.Dto;
 using db_model.UserManagement;
 using exs.Database.Commons.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
-namespace api_server.Controllers.Users.Services
+namespace api_server.Users
 {
 	public interface IUserSettingsService
 	{

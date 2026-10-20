@@ -29,6 +29,7 @@ namespace api_server.Controllers.MapData.Services
 			public CommandType Type { get; set; }
             public int UserId { get; set; }
 			public int MobileGpsDeviceId { get; set; }
+			public int? TeamId { get; set; }
 			public List<MobileGpsDeviceTrackPoint> TrackPoints { get; set; } = default!;
 		}
 
@@ -38,7 +39,7 @@ namespace api_server.Controllers.MapData.Services
 			mLogger = logger;
 		}
 
-		public async Task ParseAndUpdateDeviceLocationsAsync(int userId, int mobileGpsDeviceId, JsonArray jLocations, CancellationToken cancellationToken)
+		public async Task ParseAndUpdateDeviceLocationsAsync(int userId, int? teamId, int mobileGpsDeviceId, JsonArray jLocations, CancellationToken cancellationToken)
 		{
 			var points = new List<MobileGpsDeviceTrackPoint>(jLocations.Count);
 			var now = DateTime.UtcNow;
@@ -182,7 +183,7 @@ namespace api_server.Controllers.MapData.Services
 			}
 			if (points.Count > 0)
 			{
-				await mChannel.Writer.WriteAsync(new Command { Type = CommandType.UpdateTrackPoints, TrackPoints = points, UserId = userId, MobileGpsDeviceId = mobileGpsDeviceId }, cancellationToken);
+				await mChannel.Writer.WriteAsync(new Command { Type = CommandType.UpdateTrackPoints, TrackPoints = points, UserId = userId, TeamId = teamId, MobileGpsDeviceId = mobileGpsDeviceId }, cancellationToken);
 				mLogger.LogInformation("Parsed and enqueued {Count} location points for user {UserId}", points.Count, userId);
 			}
 		}
@@ -272,10 +273,12 @@ namespace api_server.Controllers.MapData.Services
 				{
 					latestMobileGpsDeviceTrackPoint = point;
 				}
+				point.TeamId = command.TeamId;
 				repository.Create(point);
 			}
 
 
+			mapState.TeamId = command.TeamId;
 			mapState.Location = latestMobileGpsDeviceTrackPoint.Location;
 			mapState.MotionActivity = latestMobileGpsDeviceTrackPoint.MotionActivity;
 			mapState.Speed = latestMobileGpsDeviceTrackPoint.Speed;

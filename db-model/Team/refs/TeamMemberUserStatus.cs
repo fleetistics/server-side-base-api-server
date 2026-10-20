@@ -3,9 +3,10 @@
 
     public class TeamMemberUserStatus
     {
-        public const short Active = 1;
-        public const short WithOtherTeam = 2;
-        public const short Left = 3;
+        public const short Creating = 1;
+        public const short Active = 2;
+        public const short WithOtherTeam = 3;
+        public const short Left = 4;
 
         public short Id { get; set; }
         public string Name { get; set; } = default!;

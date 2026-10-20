@@ -1,4 +1,5 @@
 using api_server.Auth.Dto;
+using api_server.Controllers.Teams.Services;
 using api_server.core;
 using db_model.Gps;
 using db_model.UserManagement;
@@ -38,6 +39,7 @@ namespace api_server.Auth
     public class AuthService(
         TokenService tokenService,
         IRepository repository,
+        ITeamService teamService,
         ILogger<AuthService> logger)
     {
         public async Task<AuthResult> LoginAsync(string userName, string password, CancellationToken cancellationToken)
@@ -78,7 +80,7 @@ namespace api_server.Auth
             logger.LogInformation("Login succeeded for {UserName} (UserId {UserId}), session {SessionId}",
                 user.UserName, user.Id, session.Id);
 
-            return BuildSuccess(session);
+            return await BuildSuccessAsync(session, cancellationToken);
         }
 
         /// <summary>Rotates the session and issues a new access token.</summary>
@@ -263,7 +265,7 @@ namespace api_server.Auth
             if (superseded is not null && superseded.Token.ExpirationTime > DateTime.UtcNow)
             {
                 activity?.SetTag("app.session.reuse_grace_window_hit", true);
-                return BuildSuccess(superseded);
+                return await BuildSuccessAsync(superseded, cancellationToken);
             }
 
             activity?.SetStatus(ActivityStatusCode.Error, "rotation key not active");
@@ -290,7 +292,7 @@ namespace api_server.Auth
             session.Token.LatestRefreshTime = now;
             await repository.SaveAsync(cancellationToken);
 
-            return BuildSuccess(session);
+            return await BuildSuccessAsync(session, cancellationToken);
         }
 
         private Task<UserSession?> FindActiveSessionAsync(string rotationKey, CancellationToken cancellationToken) =>
@@ -309,15 +311,20 @@ namespace api_server.Auth
                 .FirstOrDefaultAsync(cancellationToken);
         }
 
-        private AuthResult BuildSuccess(UserSession session) =>
-            new(AuthStatus.Success,
+        private async Task<AuthResult> BuildSuccessAsync(UserSession session, CancellationToken cancellationToken)
+        {
+            // Looked up on every token issue/renewal so the claim follows team changes;
+            // no team -> no claim (a null is never written into the JWT).
+            var teamId = await teamService.GetUserActiveTeamIdAsync(session.UserId, cancellationToken);
+            return new(AuthStatus.Success,
                 new UserSessionCheckResponse
                 {
-                    AccessToken = tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), session.MobileGpsDeviceId?.ToString()),
+                    AccessToken = tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), session.MobileGpsDeviceId?.ToString(), teamId: teamId?.ToString()),
                     UserId = session.UserId,
                     SessionId = session.Id,
                 },
                 session.Token.SessionRotationKey);
+        }
 
         // TODO: the stored value is compared verbatim — passwords are held in
         // plain text in "user"."Password". Swap this for a salted hash

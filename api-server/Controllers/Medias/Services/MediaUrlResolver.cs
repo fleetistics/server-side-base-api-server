@@ -1,7 +1,7 @@
-using api_server.Controllers.Media.Dto;
+using api_server.Medias;
 using Microsoft.Extensions.Options;
 
-namespace api_server.Controllers.Media
+namespace api_server.Medias
 {
 	/// <summary>
 	/// Turns stored media filenames into absolute URLs (Media:BaseUrl + filename).
@@ -33,8 +33,13 @@ namespace api_server.Controllers.Media
 			if (!string.IsNullOrEmpty(media.Url) &&!media.Url.StartsWith("file://")) media.Url = Combine(media.Url);
 			media.PreviewUrl = string.IsNullOrEmpty(media.PreviewUrl) ? null : Combine(media.PreviewUrl);
 		}
+        public string? ApplyAbsoluteUrl(string? fileName)
+        {
+            if (!string.IsNullOrWhiteSpace(fileName) && !fileName.StartsWith("file://")) return Combine(fileName);
+            return fileName;
+        }
 
-		private string Combine(string relativePath) =>
+        private string Combine(string relativePath) =>
 			new Uri(new Uri(mSettings.BaseUrl!.TrimEnd('/') + '/'), relativePath.TrimStart('/')).ToString();
 	}
 }

@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace api_server.Controllers.Media
+namespace api_server.Medias
 {
 	/// <summary>
 	/// Shared by MediaStorageService and MediaInboundProcessor: both do a

@@ -1,20 +1,30 @@
 using db_model.Team;
 
-namespace api_server.Controllers.Teams.Dto
+namespace api_server.Teams
 {
-	public class TeamDto : TeamHeaderDto
+	public class TeamDto 
     {
 		public TeamDto() { }
 
-		public TeamDto(Team model) : base(model)
+        public TeamDto(Team model)
         {
-		}
-
-        // ******* from TeamDetails
-        public void AssignDetails(TeamDetails details)
-        {
-            Notes = details.Notes;
+            Id = model.Id;
+            CreatorUserId = model.CreatorUserId;
+            TeamName = model.TeamName;
+            StatusId = model.StatusId;
+            CreatedDate = model.CreatedDate;
+            ClosedDate = model.ClosedDate;
+            JoinKey = model.JoinKey;
+            JoinQrCode = model.JoinQrCode;
         }
-        public string? Notes { get; set; }
+
+        public int? Id { get; set; }
+        public int CreatorUserId { get; set; }
+        public string TeamName { get; set; } = default!;
+        public short? StatusId { get; set; }
+        public DateTime CreatedDate { get; set; }
+        public DateTime? ClosedDate { get; set; }
+        public string? JoinKey { get; set; }
+        public string? JoinQrCode { get; set; }
     }
 }

@@ -1,4 +1,4 @@
-namespace api_server.Controllers.Media.Dto
+namespace api_server.Medias
 {
 	public abstract class InboundMediaAttachableDto
 	{

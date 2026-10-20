@@ -1,9 +1,9 @@
 using api_server.Controllers.Base;
-using api_server.Controllers.Media.Dto;
+using api_server.Medias;
 using api_server.Idempotency;
 using Microsoft.AspNetCore.Mvc;
 
-namespace api_server.Controllers.Media
+namespace api_server.Medias
 {
 	public class MediaSettings
 	{

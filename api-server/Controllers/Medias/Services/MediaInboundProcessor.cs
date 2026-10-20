@@ -1,10 +1,10 @@
-using api_server.Controllers.Media.Dto;
+using api_server.Medias;
 using exs.Database.Commons.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using db_model.Media;
 
-namespace api_server.Controllers.Media
+namespace api_server.Medias
 {
 	public interface IMediaInboundProcessor
 	{

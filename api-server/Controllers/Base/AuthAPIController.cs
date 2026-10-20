@@ -23,5 +23,16 @@ namespace api_server.Controllers.Base
 				return value is null ? null : int.Parse(value);
 			}
 		}
+
+		// Active team as of the last token renewal; null when the user had none
+		// (the claim is omitted from the token in that case).
+		protected int? TeamId
+		{
+			get
+			{
+				var value = User.FindFirst(TokenService.TeamIdClaim)?.Value;
+				return value is null ? null : int.Parse(value);
+			}
+		}
 	}
 }

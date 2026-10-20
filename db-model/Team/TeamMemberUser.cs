@@ -11,6 +11,6 @@ namespace db_model.Team
         public short? RoleId { get; set; }
         public DateTime LatestUpdate { get; set; }
 
-
+        public Team Team { get; set; }
     }
 }
