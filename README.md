@@ -86,6 +86,47 @@ attempted) and removes the queue row. Adding email/SMS/portal later means anothe
 `NotificationQueue`-TransportType and another standalone sender — `NotificationService`
 doesn't change.
 
+*Sender mode (opt-in).* `NotificationService:FcmTransport` is `Queue` (default; the
+pipeline above) or `Sender`. In `Sender` mode the fan-out writes one
+`notification_outbox` row per user device instead of an `fcm_queue` row, and
+the host relays them over HTTP to the standalone sender app
+(`server-side-senders/exs.sender-fcm`), then pulls delivery results back and
+clears tokens FCM reports as dead from `user_session`. Required settings
+(`NotificationService:FcmSender`): `BaseUrl`, `ApiKey`; optional `DefaultAccount`,
+`AccountsByAppId` (client `AppUID` → sender account alias). Cutover per
+environment: deploy the sender, set the three values, restart; switch back by
+setting `FcmTransport` to `Queue`. The legacy `fcm-notification-sender` must keep
+running until nothing is left in `fcm_queue`. The outbox tables belong to
+`server-side-notifications` (`NotificationDatabaseContext` migrations); the
+matching main-database migration is hand-emptied, as for the other notification tables.
+
+*Email (opt-in, independent of the push transport).* `NotificationService:EmailTransport` is `Off` (default)
+or `Sender`. In `Sender` mode email is relayed through `notification_outbox` rows (channel `email`) to the
+standalone email sender (`server-side-senders/exs.sender-email`), which has its own address and API key under
+`NotificationService:EmailSender` (same settings as `NotificationService:FcmSender`; `DefaultAccount` picks the
+SMTP account, i.e. the From address). The channel is chosen per call on `INotificationSender`, not by notification
+type (`Email:NotificationTypes`/`AllNotificationTypes` no longer exist). Every method writes into the caller's
+repository, so it commits with the caller's own save:
+
+- `CreateMobileNotification` / `CreateMobileDataNotification`: a push (title and body, or payload only) to the
+  users' devices. Push only.
+- `CreateEmailNotification`: same arguments, one email per user (title as subject, body as text) at the address
+  `IEmailDestinationResolver` gives. Email only. With `EmailTransport` off the notification is marked `Expired`
+  and a warning is logged.
+- `CreateEmail(repository, EmailMessage)`: a free-form email to one address (password reset, invitation). It
+  writes no `notification` row and names no user, only an outbox row whose envelope is cleared once the sender has
+  accepted it. Throws `InvalidOperationException` unless `EmailTransport` is `Sender`, and `ArgumentException`
+  for an invalid message.
+
+With `EmailTransport=Sender` the host must register `services.AddEmailDestinationResolver<T>()` (here
+`UserEmailDestinationResolver`, the address on the user record); the library's startup check demands one even
+for a host that only sends free-form email. Optional: `AddEmailContentFactory<T>()` (default: title as subject,
+body as text) and `AddEmailAddressInvalidator<T>()`. The tables belong to `server-side-notifications`, so the
+matching main-database migration is hand-emptied: **before deploying this version, run**
+`server-side-notifications/exs.notifications-database/Scripts/20261023133705_AddNotificationTransportType.sql`
+(idempotent; adds `notification."TransportType"` and makes `notification_outbox."NotificationId"`/`"UserId"`
+nullable).
+
 **Health** — `/health/live` (process up) and `/health/ready` (DB reachable), both
 anonymous, for orchestrator probes.
 
@@ -108,6 +149,33 @@ UI at `http://localhost:3000` (see compose file for credentials).
 **API versioning** — unversioned routes are v1 (`AssumeDefaultVersionWhenUnspecified`);
 introduce breaking changes with `[ApiVersion("2.0")]` on the controller instead of
 new route trees.
+
+## Trying the real email sender
+
+`POST /api/test/email` sends one mail through the real email sender, `GET /api/test/email/{reference}` shows its
+outcome. They are off (404) unless `TestEmail:Enabled` is `true`, because any logged-in user could otherwise send
+mail from the company's SMTP account: set it only in your machine's own, uncommitted `api-server/local_configs/local_server.json`:
+
+```json
+"NotificationService": { "EmailTransport": "Sender", "EmailSender": {
+  "BaseUrl": "http://127.0.0.1:5101/", "ApiKey": "<key made for this host>", "DefaultAccount": "<alias from the sender's Email:Accounts>" } },
+"TestEmail": { "Enabled": true }
+```
+
+`BaseUrl` goes through an SSH tunnel (the deployed sender listens on loopback only). The sender needs a `Sender:Clients:<id>`
+entry holding the SHA-256 of that key and the allowed account: `dotnet run --project ../server-side-senders/tools/exs.sender-email.TestClient -- keygen`
+prints both the key and the entry. The database must have `server-side-notifications/exs.notifications-database/Scripts/20261017104840_AddNotificationOutbox.sql`
+and then `20261023133705_AddNotificationTransportType.sql` applied first.
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:5199/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"UserName":"<user>","Password":"<password>"}' | jq -r .AccessToken)
+curl -s -X POST http://localhost:5199/api/test/email -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"to":"<your address>","subject":"Test","text":"Hello"}'        # 202 {"reference":"<ref>"}
+curl -s http://localhost:5199/api/test/email/<ref> -H "Authorization: Bearer $TOKEN"   # poll until "state":"completed"
+```
+
+The status never contains the address or the text; `resultStatus` is `sent` when the sender's SMTP server took the mail.
 
 ## Adding a feature (the golden path)
 

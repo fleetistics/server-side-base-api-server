@@ -5,9 +5,12 @@ using exs.Database.Commons.Interfaces;
 using mf.aiApi.mainDatabase.DatabaseContext;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 using Respawn;
 using Testcontainers.PostgreSql;
@@ -20,7 +23,7 @@ namespace api_server.IntegrationTests;
 /// collection: the container and host start once; ResetDatabaseAsync() wipes and
 /// re-seeds data between tests.
 /// </summary>
-public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
+public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 {
     public const string TestUserName = "test.user";
     public const string TestPassword = "integration-test-password";
@@ -58,7 +61,41 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         // Every test logs in; the brute-force limiter must not throttle the suite.
         Environment.SetEnvironmentVariable("RateLimiting__Login__PermitLimit", "100000");
         Environment.SetEnvironmentVariable("RateLimiting__Refresh__PermitLimit", "100000");
+
+        // Every fixture starts from the unconfigured host, whatever fixture ran before it in this process.
+        foreach (var name in NotificationEnvironmentVariables)
+        {
+            Environment.SetEnvironmentVariable(name, null);
+        }
+        ConfigureNotificationEnvironment();
     }
+
+    /// <summary>
+    /// The notification settings are read when the host is built, so they travel the same way as the rest:
+    /// as process environment variables. The default is the unconfigured host (legacy queue pipeline, no email);
+    /// a subclass overrides this to switch the transport. Fixtures must not run at the same time because
+    /// they share the process environment (see xunit.runner.json).
+    /// </summary>
+    protected virtual void ConfigureNotificationEnvironment()
+    {
+    }
+
+    protected static readonly string[] NotificationEnvironmentVariables =
+    [
+        "NotificationService__FcmTransport",
+        "NotificationService__FcmSender__BaseUrl",
+        "NotificationService__FcmSender__ApiKey",
+        "NotificationService__FcmSender__RelayPollIntervalSeconds",
+        "NotificationService__FcmSender__ResultPollIntervalSeconds",
+        "NotificationService__FcmSender__AccountsByAppId__app-a",
+        "NotificationService__EmailTransport",
+        "NotificationService__EmailSender__BaseUrl",
+        "NotificationService__EmailSender__ApiKey",
+        "NotificationService__EmailSender__RelayPollIntervalSeconds",
+        "NotificationService__EmailSender__ResultPollIntervalSeconds",
+        // Opt-in /api/test/email endpoints: off unless a fixture turns them on.
+        "TestEmail__Enabled",
+    ];
 
     async ValueTask IAsyncLifetime.InitializeAsync()
     {
@@ -79,8 +116,11 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             $$ LANGUAGE plpgsql;
             """);
 
-        // Touching Services builds the host, which needs the container's connection string.
-        using (var scope = Services.CreateScope())
+        // The schema is created through a throwaway host with its hosted services removed. The real host's
+        // background services (log retention, media previews, the notification sweep) query their tables the
+        // moment it starts, and the first one to fail stops the host - so the tables must exist before it starts.
+        using (var schemaHost = WithWebHostBuilder(b => b.ConfigureTestServices(s => s.RemoveAll<IHostedService>())))
+        using (var scope = schemaHost.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MainDatabaseContext>();
             await db.Database.EnsureCreatedAsync();
@@ -88,26 +128,20 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
         // LatestUpdate columns are ValueGeneratedOnAddOrUpdate: EF never sends a value and
         // expects the database to produce one. The production schema has defaults/triggers;
-        // EnsureCreated does not generate them, so add the defaults here.
+        // EnsureCreated does not generate them, so add the defaults here - for every table that has
+        // the column, found from the schema rather than listed by hand (a list goes stale as soon as
+        // a table is added or renamed, which is how this fixture once stopped starting at all).
         await ExecuteSqlAsync(
             """
-            ALTER TABLE "user" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_status" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_session" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_session_status" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "uploaded_media" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "client_log_record" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "language" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "translation_token" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "translation" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_settings" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "team" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "team_details" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "team_member_user" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "team_uploaded_media" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_location_privacy" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_emergency_alert" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "mobile_gps_device" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            DO $$
+            DECLARE t record;
+            BEGIN
+                FOR t IN SELECT table_name FROM information_schema.columns
+                         WHERE table_schema = 'public' AND column_name = 'LatestUpdate'
+                LOOP
+                    EXECUTE format('ALTER TABLE %I ALTER COLUMN "LatestUpdate" SET DEFAULT now()', t.table_name);
+                END LOOP;
+            END $$;
             """);
 
         await using (var connection = new NpgsqlConnection(_postgres.GetConnectionString()))

@@ -11,6 +11,7 @@ using api_server.Service;
 using exs.dbContextCommons;
 using mf.aiApi.mainDatabase.DatabaseContext;
 using exs.notifications_service;
+using exs.notifications_service.Sender;
 
 namespace api_server.core
 {
@@ -20,7 +21,11 @@ namespace api_server.core
 		{
 			services
 				.AddDbServices<MainDatabaseContext>(configuration)
-				.AddNotificationSender()
+				.AddNotificationSender(configuration)
+				// Only used when NotificationService:FcmTransport is "Sender"; user_session is where this host keeps devices.
+				.AddUserSessionFcmHooks()
+				// Only used when NotificationService:EmailTransport is "Sender"; the address is the one on the user record.
+				.AddEmailDestinationResolver<api_server.Services.Notifications.UserEmailDestinationResolver>()
 				.Configure<MediaSettings>(configuration.GetSection("Media"))
 				.Configure<ClientLogRetentionOptions>(configuration.GetSection("ClientLog"))
 				.AddScoped<AuthService>()

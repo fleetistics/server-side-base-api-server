@@ -1,5 +1,6 @@
 ﻿using api_server.Auth;
 using api_server.Controllers.Media;
+using api_server.Controllers.Test;
 using api_server.core;
 using Asp.Versioning;
 using exs.commons.Json;
@@ -317,6 +318,13 @@ try
     // Configure the HTTP request pipeline.
     if (app.Environment.IsDevelopment())
     {
+		app.UseSwagger();
+		app.UseSwaggerUI(options =>
+		{
+			options.SwaggerEndpoint("/swagger/v1/swagger.json", "base-server-side API v1");
+			options.RoutePrefix = string.Empty; // Serve Swagger UI at the app's root
+		});
+
 		var mediaSettings = builder.Configuration.GetSection("Media").Get<MediaSettings>()
 		?? throw new InvalidOperationException("Missing required 'Media' configuration section.");
 
@@ -344,6 +352,11 @@ try
     // Liveness: process responds. Readiness: tagged dependency checks (DB) pass.
     app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
     app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = r => r.Tags.Contains("ready") });
+
+    if (TestEmailEnabledAttribute.IsEnabled(app.Configuration))
+    {
+        Log.Warning("{Key} is true: /api/test/email can send mail from the configured email sender account to any address for any logged-in user. Keep it off everywhere except a dev machine.", TestEmailEnabledAttribute.ConfigKey);
+    }
 
     Log.Information("Application starting up...");
     app.Run();

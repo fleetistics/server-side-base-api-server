@@ -13,8 +13,10 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageReference Include="Respawn" Version="7.0.0" />
     <PackageReference Include="Shouldly" Version="4.3.0" />
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.11" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.13" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.14.0" />
+    <!-- Testcontainers pulls in SSH.NET 2024.1.0, which has two high-severity advisories in ScpClient (fixed in 2026.0.0). Nothing here uses SSH or SCP; this only overrides the version. -->
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
     <PackageReference Include="xunit.v3" Version="4.0.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
@@ -24,6 +26,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\api-server\api-server.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Two fixtures boot the real host with different notification settings and pass them (and the database
+         connection) through process environment variables, so test collections must not run at the same time. -->
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
