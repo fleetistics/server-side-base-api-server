@@ -26,7 +26,7 @@ namespace api_server.Controllers.MapData
 			{
 				return BadRequest(new { message = "MobileGpsDeviceId claim is missing in the access token." });
 			}
-			await mMapTrackService.ParseAndUpdateDeviceLocationsAsync(UserId, MobileGpsDeviceId.Value, requestData, cancellationToken);
+			await mMapTrackService.ParseAndUpdateDeviceLocationsAsync(UserId, TeamId, MobileGpsDeviceId.Value, requestData, cancellationToken);
 			return Ok();
 		}
 

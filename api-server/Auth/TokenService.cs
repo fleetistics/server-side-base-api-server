@@ -16,9 +16,13 @@ namespace api_server.Auth
         // present when mobileGpsDeviceId is supplied.
         public const string MobileGpsDeviceIdClaim = "mobile_gps_device_id";
 
+        // The user's active team at the time the token was issued. Only present
+        // when the user has one; it is refreshed whenever the access token is renewed.
+        public const string TeamIdClaim = "team_id";
+
         private readonly JwtOptions _options = jwtOptions.Value;
 
-        public string CreateAccessToken(string userId, string sessionId, string? mobileGpsDeviceId = null, IEnumerable<string>? roles = null)
+        public string CreateAccessToken(string userId, string sessionId, string? mobileGpsDeviceId = null, IEnumerable<string>? roles = null, string? teamId = null)
         {
             var claims = new List<Claim>
             {
@@ -35,6 +39,10 @@ namespace api_server.Auth
             if (!string.IsNullOrEmpty(mobileGpsDeviceId))
             {
                 claims.Add(new Claim(MobileGpsDeviceIdClaim, mobileGpsDeviceId));
+            }
+            if (!string.IsNullOrEmpty(teamId))
+            {
+                claims.Add(new Claim(TeamIdClaim, teamId));
             }
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));

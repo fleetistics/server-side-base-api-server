@@ -1,11 +1,11 @@
 using api_server.Auth;
 using api_server.Controllers.Log;
 using api_server.Controllers.MapData.Services;
-using api_server.Controllers.Media;
+using api_server.Medias;
 using api_server.Controllers.Teams;
 using api_server.Controllers.Teams.Services;
 using api_server.Controllers.Translations;
-using api_server.Controllers.Users.Services;
+using api_server.Users;
 using api_server.Idempotency;
 using api_server.Service;
 using exs.dbContextCommons;
@@ -48,6 +48,10 @@ namespace api_server.core
 				.AddSingleton<MobileGpsDeviceMapTrackService>()
                 .AddSingleton<QrCodeBuilder>()
                 .AddHostedService(sp => sp.GetRequiredService<MobileGpsDeviceMapTrackService>())
+				.Configure<MockTeamMemberMoveOptions>(configuration.GetSection("MockTeamMembers"))
+				.AddSingleton<MockTeamMemberMove>()
+				.AddSingleton<IMockTeamMemberMove>(sp => sp.GetRequiredService<MockTeamMemberMove>())
+				.AddHostedService(sp => sp.GetRequiredService<MockTeamMemberMove>())
 				.AddMemoryCache()
 				.AddSingleton<IdempotencyStore>()
 				;

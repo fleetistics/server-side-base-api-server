@@ -1,6 +1,6 @@
 using api_server.Controllers.Base;
-using api_server.Controllers.Teams.Dto;
 using api_server.Controllers.Teams.Services;
+using api_server.Teams;
 using Microsoft.AspNetCore.Mvc;
 
 namespace api_server.Controllers.Teams
@@ -12,64 +12,60 @@ namespace api_server.Controllers.Teams
 			mTeamService = teamService;
 		}
 
-		[HttpPost("/api/team")]
-		[ProducesResponseType(typeof(TeamDto), StatusCodes.Status201Created)]
-		public async Task<IActionResult> CreateTeam([FromBody] CreateTeamDto body, CancellationToken cancellationToken)
+		/// <summary>Id of the current user's active team; 204 when they have none.</summary>
+		[HttpGet("/api/team/active")]
+		[ProducesResponseType(typeof(int), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status204NoContent)]
+		public async Task<IActionResult> GetActiveTeamId(CancellationToken cancellationToken)
 		{
-			var team = await mTeamService.CreateTeamAsync(UserId, body, cancellationToken);
-			return CreatedAtAction(nameof(GetTeam), new { teamId = team.Id }, team);
+			var teamId = await mTeamService.GetUserActiveTeamIdAsync(UserId, cancellationToken);
+			if (teamId == null) return NoContent();
+			return Ok(teamId.Value);
 		}
 
-		[HttpGet("/api/team/{teamId}")]
-		[ProducesResponseType(typeof(TeamDto), StatusCodes.Status200OK)]
-		[ProducesResponseType(StatusCodes.Status404NotFound)]
-		public async Task<IActionResult> GetTeam(int teamId, CancellationToken cancellationToken)
+		/// <summary>The team the current user is still setting up; 204 when there is none.</summary>
+		[HttpGet("/api/team/creating")]
+		[ProducesResponseType(typeof(TeamCreateDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status204NoContent)]
+		public async Task<IActionResult> GetCreatingTeam(CancellationToken cancellationToken)
 		{
-			var team = await mTeamService.GetTeamAsync(teamId, cancellationToken);
-			if (team == null)
-			{
-				return NotFound(new { message = "Team not found." });
-			}
+			var team = await mTeamService.GetCreatingTeamByUserAsync(UserId, cancellationToken);
+			if (team == null) return NoContent();
 			return Ok(team);
+		}
+
+		[HttpPost("/api/team")]
+		[ProducesResponseType(typeof(int), StatusCodes.Status201Created)]
+		[ProducesResponseType(StatusCodes.Status400BadRequest)]
+		public async Task<IActionResult> CreateTeam([FromBody] TeamCreatePatchDto body, CancellationToken cancellationToken)
+		{
+			// A new team needs a name; on PATCH an omitted name just means "unchanged", so this is
+			// enforced here rather than in TeamCreatePatchDto (shared by both). A blank name is
+			// rejected by TeamPatchDto.Validate.
+			if (body.Team?.TeamName is not { IsSet: true, Value: not null })
+			{
+				ModelState.AddModelError("Team.TeamName", "TeamName is required.");
+				return ValidationProblem(ModelState);
+			}
+
+			var teamId = await mTeamService.CreateTeamAsync(UserId, body, cancellationToken);
+			return CreatedAtAction(nameof(GetCreatingTeam), null, teamId);
 		}
 
 		[HttpPatch("/api/team/{teamId}")]
-		[ProducesResponseType(typeof(TeamDto), StatusCodes.Status200OK)]
-		[ProducesResponseType(StatusCodes.Status404NotFound)]
-		public async Task<IActionResult> PatchTeam(int teamId, [FromBody] TeamPatchDto patch, CancellationToken cancellationToken)
+		[ProducesResponseType(typeof(TeamCreateDto), StatusCodes.Status200OK)]
+		public async Task<IActionResult> PatchCreatingTeam(int teamId, [FromBody] TeamCreatePatchDto body, CancellationToken cancellationToken)
 		{
-			var team = await mTeamService.PatchTeamAsync(teamId, patch, cancellationToken);
-			if (team == null)
-			{
-				return NotFound(new { message = "Team not found." });
-			}
-			return Ok(team);
+			await mTeamService.PatchCreateTeamAsync(UserId, teamId, body, cancellationToken);
+			return Ok(await mTeamService.GetCreatingTeamByUserAsync(UserId, cancellationToken));
 		}
 
-		[HttpGet("/api/team/{teamId}/details")]
-		[ProducesResponseType(typeof(TeamDto), StatusCodes.Status200OK)]
-		[ProducesResponseType(StatusCodes.Status404NotFound)]
-		public async Task<IActionResult> GetTeamDetails(int teamId, CancellationToken cancellationToken)
+		[HttpPost("/api/team/{teamId}/start")]
+		[ProducesResponseType(StatusCodes.Status204NoContent)]
+		public async Task<IActionResult> StartTeam(int teamId, CancellationToken cancellationToken)
 		{
-			var details = await mTeamService.GetTeamDetailsAsync(teamId, cancellationToken);
-			if (details == null)
-			{
-				return NotFound(new { message = "Team not found." });
-			}
-			return Ok(details);
-		}
-
-		[HttpPatch("/api/team/{teamId}/details")]
-		[ProducesResponseType(typeof(TeamDto), StatusCodes.Status200OK)]
-		[ProducesResponseType(StatusCodes.Status404NotFound)]
-		public async Task<IActionResult> PatchTeamDetails(int teamId, [FromBody] TeamPatchDto patch, CancellationToken cancellationToken)
-		{
-			var details = await mTeamService.PatchTeamDetailsAsync(teamId, patch, cancellationToken);
-			if (details == null)
-			{
-				return NotFound(new { message = "Team not found." });
-			}
-			return Ok(details);
+			await mTeamService.StartTeamAsync(UserId, teamId, cancellationToken);
+			return NoContent();
 		}
 
 		private readonly ITeamService mTeamService;

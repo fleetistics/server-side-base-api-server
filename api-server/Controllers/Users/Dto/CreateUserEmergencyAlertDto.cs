@@ -1,4 +1,4 @@
-namespace api_server.Controllers.Users.Dto
+namespace api_server.Users
 {
 	/// <summary>
 	/// Body for POST /api/users/me/emergency-alert. UserId, Id, CreatedDate and StatusId are all

@@ -1,4 +1,4 @@
-namespace api_server.Controllers.Users.Services
+namespace api_server.Users
 {
 	public interface IUserCurrentContextService
 	{

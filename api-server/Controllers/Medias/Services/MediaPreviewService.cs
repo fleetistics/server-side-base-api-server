@@ -6,7 +6,7 @@ using db_model.Media;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 
-namespace api_server.Controllers.Media
+namespace api_server.Medias
 {
 	public interface IMediaPreviewQueue
 	{

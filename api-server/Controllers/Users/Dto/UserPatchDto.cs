@@ -1,8 +1,8 @@
-using api_server.Controllers.Media.Dto;
+using api_server.Medias;
 using exs.commons.Json;
 using System.ComponentModel.DataAnnotations;
 
-namespace api_server.Controllers.Users.Dto
+namespace api_server.Users
 {
 	/// <summary>
 	/// GroupKey values InsertMedias entries use to tell UserService which User

@@ -1,10 +1,10 @@
 using api_server.BusinessLogic.Dto;
 using api_server.Controllers.MapData.Dto;
-using api_server.Controllers.Media;
-using api_server.Controllers.Media.Dto;
+using api_server.Medias;
 using api_server.Controllers.Messages;
 using api_server.Controllers.Teams.Dto;
-using api_server.Controllers.Users.Dto;
+using api_server.Teams;
+using api_server.Users;
 using db_model.Gps;
 using db_model.Map;
 using db_model.Messages;
@@ -54,7 +54,8 @@ namespace api_server.Controllers.Teams.Services
 		Task<TeamContextUpdateResult> GetTeamContextAsync(int currentUserId, int teamId, CancellationToken cancellationToken);
 
 		/// <summary>
-		/// Only what changed since <paramref name="latestUpdateDate"/> (unix seconds), plus
+		/// Only what changed since <paramref name="latestUpdateDate"/> (unix milliseconds, the
+		/// <see cref="TeamContextDelta.LastUpdate"/> of the previous call), plus
 		/// removal markers. Same caller-membership/exclusion rules as <see cref="GetTeamContextAsync"/>.
 		/// </summary>
 		Task<TeamContextUpdateResult> GetTeamContextDeltaAsync(int currentUserId, int teamId, long latestUpdateDate, int[]? notTeamUserIds, int[]? requestedUserIds, CancellationToken cancellationToken);
@@ -63,11 +64,12 @@ namespace api_server.Controllers.Teams.Services
 	public sealed class TeamContextService : ITeamContextService
 	{
 
-		public TeamContextService(IRepository repository, MediaUrlResolver mediaUrls)
+		public TeamContextService(IRepository repository, MediaUrlResolver mediaUrls, ILogger<TeamContextService> logger)
 		{
 			mRepository = repository;
 			mMediaUrls = mediaUrls;
-		}
+            mLogger = logger;
+        }
 
         // 1. Full snapshot of everything currently active/visible.
         public async Task<TeamContextUpdateResult> GetTeamContextAsync(int currentUserId, int teamId, CancellationToken cancellationToken)
@@ -220,14 +222,14 @@ namespace api_server.Controllers.Teams.Services
             }
             if (delta.UserMessages?.Count == 0) delta.UserMessages = null;
             if (delta.TeamActivities?.Count == 0) delta.TeamActivities = null;
-            delta.LastUpdate = roundUpToSecond(team.Now);
+            delta.LastUpdate = toCursor(team.Now);
 			return TeamContextUpdateResult.Updated(delta);
 		}
 
 		// 2. Only what changed since `since`, plus removal markers.
 		public async Task<TeamContextUpdateResult> GetTeamContextDeltaAsync(int currentUserId, int teamId, long latestUpdateDate, int[]? notTeamUserIds, int[]? requestedUserIds, CancellationToken cancellationToken)
 		{
-			DateTime since = DateTimeHelper.UnixTimeToUtcDateTime(latestUpdateDate);
+			DateTime since = DateTimeOffset.FromUnixTimeMilliseconds(latestUpdateDate).UtcDateTime;
             var delta = new TeamContextDelta();
             var team = await mRepository.GetQueryable<Team>(t => t.Id == teamId && t.StatusId == TeamStatus.Active)
 				.Select(t => new { Team = t, Now = DateTime.UtcNow })
@@ -323,8 +325,8 @@ namespace api_server.Controllers.Teams.Services
 			foreach (var row in members)
 			{
 				if (row.UserId == currentUserId) continue;
-
-				if (row.LatestUpdate > since)
+                mLogger.LogInformation($"TeamMemberUser UserId {row.UserId} StatusId {row.StatusId} LatestUpdate {row.LatestUpdate} since {since} new {(row.LatestUpdate > since)}");
+                if (row.LatestUpdate > since)
 				{
 
 					if (row.StatusId == TeamMemberUserStatus.Active)
@@ -360,14 +362,17 @@ namespace api_server.Controllers.Teams.Services
                 if (notTeamUserIds?.Length > 0) updateUserIds.UnionWith(notTeamUserIds);
                 var loadUserIds = new HashSet<int>(loadNotTeamUserIds);
                 loadUserIds.UnionWith(loadTeamUserIds);
-                var updatedUsers = await mRepository.GetQueryable<User>(e => (updateUserIds.Contains(e.Id) && e.LatestUpdate > since) || loadUserIds.Contains(e.Id))
+				mLogger.LogInformation($"load users updateUserIds {string.Join(", ", updateUserIds)}  loadUserIds {string.Join(", ", loadUserIds)}");
+
+				var updatedUsers = await mRepository.GetQueryable<User>(e => (updateUserIds.Contains(e.Id) && e.LatestUpdate > since) || loadUserIds.Contains(e.Id))
                         .Include(u => u.AvatarImage)
                         .Include(u => u.GovIDImage)
                         .AsNoTracking()
                         .ToListAsync(cancellationToken);
                 foreach (var user in updatedUsers)
                 {
-					if (user.StatusId == UserStatus.Active)
+                    mLogger.LogInformation($"User UserId {user.Id} StatusId {user.StatusId} LatestUpdate {user.LatestUpdate} since {since} new {(user.LatestUpdate > since)}");
+                    if (user.StatusId == UserStatus.Active)
 					{
                         (delta.Users ??= new()).Add(toUserDto(user));
                     }
@@ -405,6 +410,7 @@ namespace api_server.Controllers.Teams.Services
 					.ToListAsync(cancellationToken);
 				foreach (var userPrivacy in privateUsers)
 				{
+					mLogger.LogInformation($"UserLocationPrivacy UserId {userPrivacy.UserId} PrivacyMode {userPrivacy.PrivacyMode} LatestUpdate {userPrivacy.LatestUpdate} since {since} > {(userPrivacy.LatestUpdate > since)}");
 					if (userPrivacy.PrivacyMode == 0)
 					{
 						if (userPrivacy.LatestUpdate > since)
@@ -426,7 +432,8 @@ namespace api_server.Controllers.Teams.Services
                     }
 				}
 
-			}
+
+            }
 			if (updateMapStateUserIds.Count > 0 || loadMapStateUserIds.Count > 0)
 			{
                 delta.GpsDeviceMapStates = await mRepository.GetQueryable<MobileGpsDeviceMapState>(e => (updateMapStateUserIds.Contains(e.UserId) && e.LatestOnMapUpdate > since) || loadMapStateUserIds.Contains(e.UserId)).Select(s => new MobileGpsDeviceMapStateDto(s)).ToListAsync(cancellationToken);
@@ -442,7 +449,7 @@ namespace api_server.Controllers.Teams.Services
 						(delta.UserAlerts ??= new()).Add(new ActiveUserEmergencyAlertDto(alert));
 					else
 					{
-						(delta.RemoveUserAlertIds ??= new()).Add(alert.Id);
+						(delta.RemoveUserAlertIds ??= new()).Add(alert.UserId);
 					}
                 }
 
@@ -468,7 +475,7 @@ namespace api_server.Controllers.Teams.Services
 			if (delta.TeamActivities?.Count == 0) delta.TeamActivities = null;
 
 			if (!hasChanges(delta)) return TeamContextUpdateResult.NotModified;
-            delta.LastUpdate = roundUpToSecond(team.Now);
+            delta.LastUpdate = toCursor(team.Now);
 
             return TeamContextUpdateResult.Updated(delta);
 		}
@@ -510,22 +517,18 @@ namespace api_server.Controllers.Teams.Services
 			delta.RemoveUserLocationPrivacyIds is { Count: > 0 } ||
 			delta.RemoveGpsDeviceMapStateIds is { Count: > 0 };
 
-		// TeamContextDelta.LastUpdate round-trips through the API as a whole-second unix
-		// timestamp (DateTimeNullable2UnixSerializer truncates). Rounding up here - rather than
-		// leaving team.Now's full precision, which would floor on the wire - guarantees every
-		// record this call could have reported has LatestUpdate <= this value, so a client that
-		// echoes it back as its next latestUpdateDate will never see an already-reported record
-		// (including this call's own baseline rows) look "changed" again. The cost is symmetrical,
-		// not one-sided: a genuinely new change landing in the same second this rounds up into is
-		// simply picked up on the client's next poll instead of this one - normal, bounded (< 1s)
-		// polling latency, not a missed update.
-		private static DateTime roundUpToSecond(DateTime value)
-		{
-			var truncated = value.AddTicks(-(value.Ticks % TimeSpan.TicksPerSecond));
-			return truncated == value ? truncated : truncated.AddSeconds(1);
-		}
+		// The cursor travels as a plain long of unix MILLISECONDS (not through the whole-second
+		// DateTime serializer) and is rounded DOWN, never up. Rounding up would push the cursor past
+		// the server's own "now": a row committed after this call's queries, but before the rounded-up
+		// instant, has LatestUpdate <= cursor and the next delta (LatestUpdate > since) would skip it
+		// forever - e.g. a new member whose map state then arrives without a Member/User record.
+		// Rounding down can only make a row stamped within the last millisecond show up once more on
+		// the next call, which is harmless: the client applies records as upserts.
+		private static long toCursor(DateTime value) =>
+			new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
 
 		private readonly IRepository mRepository;
 		private readonly MediaUrlResolver mMediaUrls;
-	}
+        private readonly ILogger mLogger;
+    }
 }

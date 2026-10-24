@@ -18,6 +18,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			createGpsModel(modelBuilder);
 			createMapModel(modelBuilder);
 			createTeamModel(modelBuilder);
+			createMessageModel(modelBuilder);
 		}
 	}
 }

@@ -263,6 +263,9 @@ namespace main_database.Migrations
                     b.Property<float?>("Speed")
                         .HasColumnType("real");
 
+                    b.Property<int?>("TeamId")
+                        .HasColumnType("integer");
+
                     b.Property<int>("UserId")
                         .HasColumnType("integer");
 
@@ -313,6 +316,9 @@ namespace main_database.Migrations
                     b.Property<float?>("Speed")
                         .HasColumnType("real");
 
+                    b.Property<int?>("TeamId")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.ToTable("mobile_gps_device_track_point", (string)null);
@@ -358,6 +364,134 @@ namespace main_database.Migrations
                     b.ToTable("uploaded_media", (string)null);
                 });
 
+            modelBuilder.Entity("db_model.Messages.TeamActivity2User", b =>
+                {
+                    b.Property<int>("TeamActivityId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.HasKey("TeamActivityId", "UserId");
+
+                    b.ToTable("team_activity2user", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Messages.UserMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<int?>("TeamId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ToUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_message", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Messages.UserMessage2User", b =>
+                {
+                    b.Property<int>("UserMessageId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.HasKey("UserMessageId", "UserId");
+
+                    b.ToTable("user_message2user", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Messages.UserMessage2UserStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_message2user_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Messages.UserMessageStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_message_status", (string)null);
+                });
+
             modelBuilder.Entity("db_model.Team.Team", b =>
                 {
                     b.Property<int>("Id")
@@ -400,10 +534,67 @@ namespace main_database.Migrations
                     b.ToTable("team", (string)null);
                 });
 
+            modelBuilder.Entity("db_model.Team.TeamActivity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<short>("ActivityTypeId")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Point>("Location")
+                        .HasColumnType("geometry");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("text");
+
+                    b.Property<int>("TeamId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("team_activity", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Team.TeamActivityType", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("team_activity_type", (string)null);
+                });
+
             modelBuilder.Entity("db_model.Team.TeamDetails", b =>
                 {
                     b.Property<int>("TeamId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("IncidentName")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
@@ -468,6 +659,54 @@ namespace main_database.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("team_user_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Team.TeamPrimaryTargetUser", b =>
+                {
+                    b.Property<int>("TeamId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<int?>("TargetUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("TeamId");
+
+                    b.ToTable("team_primary_target_user", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Team.TeamPrimaryTargetUserStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("team_primary_target_user_status", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Team.TeamStatus", b =>
@@ -1226,28 +1465,39 @@ namespace main_database.Migrations
                     b.ToTable("fcm_sent", (string)null);
                 });
 
-            modelBuilder.Entity("db_model.Team.TeamDetails", b =>
+            modelBuilder.Entity("db_model.Messages.TeamActivity2User", b =>
                 {
-                    b.HasOne("db_model.Team.Team", null)
-                        .WithOne()
-                        .HasForeignKey("db_model.Team.TeamDetails", "TeamId")
+                    b.HasOne("db_model.Team.TeamActivity", null)
+                        .WithMany("TeamActivity2Users")
+                        .HasForeignKey("TeamActivityId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.Messages.UserMessage2User", b =>
+                {
+                    b.HasOne("db_model.Messages.UserMessage", null)
+                        .WithMany("UserMessage2Users")
+                        .HasForeignKey("UserMessageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
             modelBuilder.Entity("db_model.Team.TeamMemberUser", b =>
                 {
-                    b.HasOne("db_model.Team.Team", null)
+                    b.HasOne("db_model.Team.Team", "Team")
                         .WithMany("Members")
                         .HasForeignKey("TeamId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Team");
                 });
 
             modelBuilder.Entity("db_model.Team.TeamUploadedMedia", b =>
                 {
-                    b.HasOne("db_model.Team.Team", null)
-                        .WithMany("UploadedMedias")
+                    b.HasOne("db_model.Team.TeamDetails", null)
+                        .WithMany("Medias")
                         .HasForeignKey("TeamId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -1336,11 +1586,24 @@ namespace main_database.Migrations
                     b.Navigation("Notification");
                 });
 
+            modelBuilder.Entity("db_model.Messages.UserMessage", b =>
+                {
+                    b.Navigation("UserMessage2Users");
+                });
+
             modelBuilder.Entity("db_model.Team.Team", b =>
                 {
                     b.Navigation("Members");
+                });
 
-                    b.Navigation("UploadedMedias");
+            modelBuilder.Entity("db_model.Team.TeamActivity", b =>
+                {
+                    b.Navigation("TeamActivity2Users");
+                });
+
+            modelBuilder.Entity("db_model.Team.TeamDetails", b =>
+                {
+                    b.Navigation("Medias");
                 });
 
             modelBuilder.Entity("db_model.UserManagement.User", b =>

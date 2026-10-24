@@ -1,6 +1,6 @@
 using db_model.UserManagement;
 
-namespace api_server.Controllers.Users.Dto
+namespace api_server.Users
 {
 	public class MyUserEmergencyAlertDto
 	{

@@ -1,12 +1,12 @@
 using System.Text.RegularExpressions;
-using api_server.Controllers.Media.Dto;
+using api_server.Medias;
 using api_server.core;
 using exs.Database.Commons.Interfaces;
 using db_model.Media;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
-namespace api_server.Controllers.Media
+namespace api_server.Medias
 {
 	/// <summary>Outcome of a media save: exactly one of Media / Error is set.</summary>
 	public sealed record MediaSaveResult(UploadedMedia? Media, string? Error)

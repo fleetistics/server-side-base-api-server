@@ -1,14 +1,20 @@
 ﻿using api_server.BusinessLogic.Dto;
 using api_server.Controllers.MapData.Dto;
-using api_server.Controllers.Media.Dto;
+using api_server.Medias;
 using api_server.Controllers.Messages;
-using api_server.Controllers.Users.Dto;
+using api_server.Teams;
+using api_server.Users;
 
 namespace api_server.Controllers.Teams.Dto
 {
     public class TeamContextDelta
     {
-        public DateTime LastUpdate { get; set; }
+        /// <summary>
+        /// Cursor for the next delta call: server time as unix MILLISECONDS, rounded down. A plain long
+        /// (not a DateTime) so it bypasses the whole-second DateTime serializer; the client echoes it
+        /// back unchanged as latestUpdateDate.
+        /// </summary>
+        public long LastUpdate { get; set; }
         public TeamHeaderDto? TeamHeader { get; set; }
         public TeamDetailsDto? TeamDetails { get; set; }
         public List<UploadedMediaDto>? TeamUploadedMedias { get; set; }

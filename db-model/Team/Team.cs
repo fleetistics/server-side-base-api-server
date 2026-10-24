@@ -17,7 +17,6 @@ namespace db_model.Team
 
         public DateTime LatestUpdate { get; set; }
 
-        public List<TeamUploadedMedia> UploadedMedias { get; set; } = default!;
         public List<TeamMemberUser> Members { get; set; } = default!;
     }
 }

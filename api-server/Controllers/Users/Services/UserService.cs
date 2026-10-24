@@ -1,11 +1,9 @@
-using api_server.Controllers.Media;
-using api_server.Controllers.Media.Dto;
-using api_server.Controllers.Users.Dto;
+using api_server.Medias;
 using db_model.UserManagement;
 using exs.Database.Commons.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
-namespace api_server.Controllers.Users.Services
+namespace api_server.Users
 {
 	public interface IUserService
 	{

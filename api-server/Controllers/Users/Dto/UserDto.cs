@@ -1,7 +1,8 @@
-﻿using api_server.Controllers.Media.Dto;
+﻿
 using db_model.UserManagement;
+using api_server.Medias;
 
-namespace api_server.Controllers.Users.Dto
+namespace api_server.Users
 {
 	public class UserDto 
 	{

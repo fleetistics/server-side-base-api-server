@@ -1,6 +1,6 @@
 using api_server.core;
 
-namespace api_server.Controllers.Users.Dto
+namespace api_server.Users
 {
 	public class UserSettingsPutDto
 	{

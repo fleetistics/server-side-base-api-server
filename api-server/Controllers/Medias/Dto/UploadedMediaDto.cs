@@ -1,6 +1,6 @@
 ﻿using db_model.Media;
 
-namespace api_server.Controllers.Media.Dto
+namespace api_server.Medias
 {
 	public class UploadedMediaDto
 	{

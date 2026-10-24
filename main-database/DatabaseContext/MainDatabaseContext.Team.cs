@@ -13,25 +13,33 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 				entity.ToTable("team");
 				entity.HasKey(e => new { e.Id });
 				entity.Property(e => e.Id).ValueGeneratedOnAdd();
-			});
+                entity.HasMany(t => t.Members).WithOne(e=>e.Team).HasForeignKey(e => e.TeamId);
+            });
 			modelBuilder.Entity<TeamDetails>(entity =>
 			{
 				entity.ToTable("team_details");
 				entity.HasKey(e => e.TeamId);
 				entity.Property(e => e.TeamId).ValueGeneratedNever();
-				entity.HasOne<Team>().WithOne().HasForeignKey<TeamDetails>(e => e.TeamId);
-			});
+				//entity.HasOne<Team>().WithOne().HasForeignKey<TeamDetails>(e => e.TeamId);
+				entity.HasMany(e => e.Medias).WithOne().HasForeignKey(e => e.TeamId);
+            });
 			modelBuilder.Entity<TeamMemberUser>(entity =>
 			{
 				entity.ToTable("team_member_user");
 				entity.HasKey(e => new { e.TeamId, e.UserId });
-				entity.HasOne<Team>().WithMany(t => t.Members).HasForeignKey(e => e.TeamId);
+				
 			});
-			modelBuilder.Entity<TeamUploadedMedia>(entity =>
+			modelBuilder.Entity<TeamPrimaryTargetUser>(entity =>
+			{
+				entity.ToTable("team_primary_target_user");
+				entity.HasKey(e => e.TeamId);
+				entity.Property(e => e.TeamId).ValueGeneratedNever();
+			});
+				modelBuilder.Entity<TeamUploadedMedia>(entity =>
 			{
 				entity.ToTable("team_uploaded_media");
 				entity.HasKey(e => new { e.TeamId, e.UploadedMediaId });
-				entity.HasOne<Team>().WithMany(e => e.UploadedMedias).HasForeignKey(e => e.TeamId);
+				//entity.HasOne<Team>().WithMany(e => e.UploadedMedias).HasForeignKey(e => e.TeamId);
 				entity.HasOne(e => e.Media).WithMany().HasForeignKey(e => e.UploadedMediaId);
 			});
 			modelBuilder.Entity<TeamStatus>(entity =>
@@ -42,6 +50,11 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			modelBuilder.Entity<TeamMemberUserStatus>(entity =>
 			{
 				entity.ToTable("team_user_status");
+				entity.HasKey(e => e.Id);
+			});
+			modelBuilder.Entity<TeamPrimaryTargetUserStatus>(entity =>
+			{
+				entity.ToTable("team_primary_target_user_status");
 				entity.HasKey(e => e.Id);
 			});
 		}

@@ -8,7 +8,12 @@ namespace db_model.Team
     {
         public int TeamId { get; set; }
 
+        public string? IncidentName { get; set; }
+
         public string? Notes { get; set; }
         public DateTime LatestUpdate { get; set; }
+
+        public List<TeamUploadedMedia>? Medias { get; set; }
+        //public Team Team { get; set; }
     }
 }
