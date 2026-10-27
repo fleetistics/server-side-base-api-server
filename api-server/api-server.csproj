@@ -9,16 +9,16 @@
 
   <ItemGroup>
     <PackageReference Include="Asp.Versioning.Mvc" Version="10.2.1" />
-    <PackageReference Include="AutoMapper" Version="16.2.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
+    <PackageReference Include="Isopoh.Cryptography.Argon2" Version="2.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
     <PackageReference Include="Npgsql.OpenTelemetry" Version="10.0.3" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.18.0" />
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.18.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.18.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.18.0" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.18.0" />
-    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.20.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.20.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.20.0" />
+    <PackageReference Include="QRCoder" Version="1.8.1" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
     <PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
@@ -27,8 +27,8 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
     <PackageReference Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0" />
-    <PackageReference Include="SixLabors.ImageSharp" Version="4.1.1" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="4.1.3" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.3.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -53,7 +53,7 @@
     actually fire on every dotnet build/run/F5.
   -->
   <Target Name="EnsurePendingMigrations" BeforeTargets="CoreCompile" Condition="'$(Configuration)' == 'Debug'">
-    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\main-database\Scripts\Update-PendingMigrations.ps1&quot;" ConsoleToMSBuild="true" ContinueOnError="WarnAndContinue">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\main-database\Scripts\Update-PendingMigrations.ps1&quot;" ConsoleToMSBuild="true" StandardOutputImportance="high" StandardErrorImportance="high">
       <Output TaskParameter="ConsoleOutput" ItemName="_MigrationCheckOutput" />
     </Exec>
     <!-- Exec's own stdout is Normal-importance and gets hidden at dotnet build's default

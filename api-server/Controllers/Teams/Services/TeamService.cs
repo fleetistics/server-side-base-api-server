@@ -4,7 +4,6 @@ using api_server.core;
 using api_server.Medias;
 using api_server.Service;
 using api_server.Teams;
-using AutoMapper;
 using db_model.Media;
 using db_model.Team;
 using db_model.UserManagement;
@@ -215,13 +214,12 @@ namespace api_server.Controllers.Teams.Services
             if (mMockTeamMemberMove.IsMockTeamNotes(notes)) mMockTeamMemberMove.Start(teamId, userId);
         }
 
-        public TeamService(QrCodeBuilder qrCodeBuilder, MediaUrlResolver mediaUrls, IMediaInboundProcessor mediaInboundProcessor, IRepository repository, IMapper mapper, IUserService users, IMockTeamMemberMove mockTeamMemberMove, ILogger<TeamService> logger)
+        public TeamService(QrCodeBuilder qrCodeBuilder, MediaUrlResolver mediaUrls, IMediaInboundProcessor mediaInboundProcessor, IRepository repository, IUserService users, IMockTeamMemberMove mockTeamMemberMove, ILogger<TeamService> logger)
 		{
 			mMockTeamMemberMove = mockTeamMemberMove;
 			mUsers = users;
 			mRepository = repository;
 			mQrCodeBuilder = qrCodeBuilder;
-			mMapper = mapper;
 			mLogger = logger;
             mMediaUrls = mediaUrls;
             mMediaInboundProcessor = mediaInboundProcessor;	
@@ -231,7 +229,6 @@ namespace api_server.Controllers.Teams.Services
 
 		private readonly QrCodeBuilder mQrCodeBuilder;
 		private readonly IRepository mRepository;
-		private readonly IMapper mMapper;
 		private readonly IUserService mUsers;
 		private readonly IMockTeamMemberMove mMockTeamMemberMove;
 		private readonly ILogger mLogger;

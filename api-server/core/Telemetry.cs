@@ -21,6 +21,10 @@ namespace api_server.core
 		public static readonly Counter<long> LoginFailures =
 			Meter.CreateCounter<long>("app.auth.login_failures", description: "Failed login attempts");
 
+		/// <summary>Counts accounts put into a temporary lock after repeated failed logins.</summary>
+		public static readonly Counter<long> LoginLockouts =
+			Meter.CreateCounter<long>("app.auth.login_lockouts", description: "Accounts locked after repeated failed logins");
+
 		/// <summary>Decompressed size of client-log uploads (the endpoint itself is untraced).</summary>
 		public static readonly Histogram<long> ClientLogPayloadBytes =
 			Meter.CreateHistogram<long>("app.client_log.payload_size", unit: "By",

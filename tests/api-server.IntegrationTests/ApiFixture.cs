@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using api_server.Auth;
 using db_model.UserManagement;
 using exs.Database.Commons.Interfaces;
 using mf.aiApi.mainDatabase.DatabaseContext;
@@ -8,6 +10,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 using Respawn;
 using Testcontainers.PostgreSql;
@@ -25,6 +28,12 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     public const string TestUserName = "test.user";
     public const string TestPassword = "integration-test-password";
 
+    /// <summary>
+    /// What the seeded user's Password column holds. Hashed once for the whole run (Argon2 is
+    /// deliberately slow); tests compare against it to check "password unchanged".
+    /// </summary>
+    public static readonly string TestPasswordHash = new PasswordHasher().Hash(TestPassword);
+
     // The app registers Npgsql with UseNetTopologySuite(), so schema creation issues
     // CREATE EXTENSION postgis — the plain postgres image doesn't ship it.
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
@@ -39,8 +48,21 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     public string MediaUploadFolder { get; } =
         Path.Combine(Path.GetTempPath(), $"api-tests-media-{Guid.NewGuid():N}");
 
+    /// <summary>Stands in for the e-mail channel so tests can read the reset keys the API issues.</summary>
+    public CapturingPasswordResetKeySender ResetKeySender { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.ConfigureServices(services =>
+        {
+            services.AddSingleton<IPasswordResetKeySender>(ResetKeySender);
+
+            // The host starts before the schema exists (EnsureCreated below needs the host's
+            // context), so hosted services that query on startup — NotificationService's sweep —
+            // fail once. By default that stops and disposes the whole host; here it must not.
+            services.Configure<HostOptions>(o => o.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+        });
+
         // Not "Development": skips the dev-only static-files branch (which requires a
         // real Media:UploadFolder) and never loads appsettings.Development.json.
         builder.UseEnvironment("Testing");
@@ -58,6 +80,17 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         // Every test logs in; the brute-force limiter must not throttle the suite.
         Environment.SetEnvironmentVariable("RateLimiting__Login__PermitLimit", "100000");
         Environment.SetEnvironmentVariable("RateLimiting__Refresh__PermitLimit", "100000");
+        // Same for the registration / password-reset limiters. Set as host settings (not env
+        // vars) so a test can lower one through WithWebHostBuilder(UseSetting) — env vars would win.
+        builder.UseSetting("RateLimiting:Register:PermitLimit", "100000");
+        builder.UseSetting("RateLimiting:PasswordResetRequest:PermitLimit", "100000");
+        builder.UseSetting("RateLimiting:PasswordReset:PermitLimit", "100000");
+        // The production minimum response time would add a second to every reset request; the
+        // test that covers it turns it back on.
+        builder.UseSetting("Auth:PasswordResetMinResponseMilliseconds", "0");
+        // Suites log in and fail logins as the same user many times over; the per-account lock
+        // would trip on that. The tests for it switch it back on.
+        builder.UseSetting("Auth:LoginMaxFailedAttempts", "0");
     }
 
     async ValueTask IAsyncLifetime.InitializeAsync()
@@ -79,7 +112,10 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             $$ LANGUAGE plpgsql;
             """);
 
-        // Touching Services builds the host, which needs the container's connection string.
+        // Touching Services builds and starts the host, which needs the container's connection string.
+        // The schema must come from the host's own context: NotificationsModelBuilder guards with a
+        // static flag, so a second EF model build in this process (e.g. a standalone context) would
+        // come out without the notification entities.
         using (var scope = Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MainDatabaseContext>();
@@ -94,7 +130,6 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             ALTER TABLE "user" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
             ALTER TABLE "user_status" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
             ALTER TABLE "user_session" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_session_status" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
             ALTER TABLE "uploaded_media" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
             ALTER TABLE "client_log_record" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
             ALTER TABLE "language" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
@@ -142,6 +177,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
         await connection.OpenAsync();
         await _respawner!.ResetAsync(connection);
+        ResetKeySender.Clear();
         await SeedAsync();
     }
 
@@ -174,9 +210,7 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         var user = new User
         {
             UserName = TestUserName,
-            // AuthService currently compares the stored value verbatim (see the TODO on
-            // VerifyPassword) — when hashing lands, this seed changes with it.
-            Password = TestPassword,
+            Password = TestPasswordHash,
             DisplayName = "Test User",
             FullName = "Integration Test User",
             Email = "test.user@example.test",
@@ -197,6 +231,28 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     }
 
     public sealed record LoginResponse(string AccessToken, int UserId, int SessionId, string? PreferredLanguage);
+}
+
+public sealed class CapturingPasswordResetKeySender : IPasswordResetKeySender
+{
+    private readonly ConcurrentDictionary<int, List<string>> _keys = new();
+    private readonly ConcurrentDictionary<int, string?> _recipients = new();
+
+    public Task SendAsync(User user, string? recipientEmail, string resetKey, DateTime expiresAtUtc, CancellationToken cancellationToken)
+    {
+        _keys.AddOrUpdate(user.Id, _ => [resetKey], (_, list) => { lock (list) { list.Add(resetKey); } return list; });
+        _recipients[user.Id] = recipientEmail;
+        return Task.CompletedTask;
+    }
+
+    public string? LatestKeyFor(int userId) => _keys.TryGetValue(userId, out var list) ? list[^1] : null;
+
+    /// <summary>Every key sent to the user, oldest first.</summary>
+    public IReadOnlyList<string> KeysFor(int userId) => _keys.TryGetValue(userId, out var list) ? [.. list] : [];
+
+    public string? RecipientFor(int userId) => _recipients.GetValueOrDefault(userId);
+    public bool HasKeyFor(int userId) => _keys.ContainsKey(userId);
+    public void Clear() { _keys.Clear(); _recipients.Clear(); }
 }
 
 [CollectionDefinition(Name)]

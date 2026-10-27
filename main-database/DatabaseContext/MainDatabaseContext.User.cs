@@ -58,6 +58,14 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
                 entity.HasKey(e => e.UserId);
                 entity.Property(e => e.UserId).ValueGeneratedNever();
             });
+            modelBuilder.Entity<UserPasswordResetKey>(entity =>
+            {
+                entity.ToTable("user_password_reset_key");
+                entity.HasKey(e => e.KeyHash);
+                entity.Property(e => e.KeyHash).HasMaxLength(64).ValueGeneratedNever();
+                entity.HasIndex(e => e.UserId);
+                entity.HasOne<User>().WithMany().HasForeignKey(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
+            });
             modelBuilder.Entity<UserSettings>(entity =>
             {
                 entity.ToTable("user_settings");
