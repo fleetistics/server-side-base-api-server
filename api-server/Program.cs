@@ -1,5 +1,5 @@
 ﻿using api_server.Auth;
-using api_server.Controllers.Media;
+using api_server.Medias;
 using api_server.Controllers.Test;
 using api_server.core;
 using Asp.Versioning;
