@@ -23,6 +23,14 @@ $projectDir = Join-Path $PSScriptRoot '..'
 
 Push-Location $projectDir
 try {
+    # dotnet-ef is a local tool (.config/dotnet-tools.json); without a restore
+    # `dotnet ef` fails and the check below would never run.
+    $restoreOutput = & dotnet tool restore 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host ($restoreOutput | Out-String)
+        throw "dotnet tool restore failed - cannot run dotnet ef."
+    }
+
     Write-Host "Checking for pending EF Core model changes (main-database)..."
 
     $output = & dotnet ef migrations has-pending-model-changes --project . --startup-project . 2>&1

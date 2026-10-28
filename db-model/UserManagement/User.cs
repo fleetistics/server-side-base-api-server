@@ -19,7 +19,7 @@ namespace db_model.UserManagement
 
 
         public string? Password { get; set; } = default!;
-        public bool? IsPrivateMode { get; set; }
+        //public bool? IsPrivateMode { get; set; }
 
         
         public string? Phone { get; set; }

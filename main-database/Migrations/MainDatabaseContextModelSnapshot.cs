@@ -1002,9 +1002,6 @@ namespace main_database.Migrations
                     b.Property<int?>("GovIDImageId")
                         .HasColumnType("integer");
 
-                    b.Property<bool?>("IsPrivateMode")
-                        .HasColumnType("boolean");
-
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -1122,6 +1119,28 @@ namespace main_database.Migrations
                     b.HasKey("UserId");
 
                     b.ToTable("user_location_privacy", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.UserManagement.UserPasswordResetKey", b =>
+                {
+                    b.Property<string>("KeyHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("KeyHash");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user_password_reset_key", (string)null);
                 });
 
             modelBuilder.Entity("db_model.UserManagement.UserSettings", b =>
@@ -1682,6 +1701,15 @@ namespace main_database.Migrations
                     b.HasOne("db_model.UserManagement.User", null)
                         .WithOne("LocationPrivacy")
                         .HasForeignKey("db_model.UserManagement.UserLocationPrivacy", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.UserManagement.UserPasswordResetKey", b =>
+                {
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

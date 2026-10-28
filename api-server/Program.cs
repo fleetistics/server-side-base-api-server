@@ -138,6 +138,21 @@ try
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+        // Registration and password reset get buckets of their own, so spamming them cannot
+        // exhaust the login budget of everyone behind the same IP. The limit is read per request
+        // (not captured at startup) so it follows configuration, e.g. RateLimiting:Register:PermitLimit.
+        void AddPerIpPolicy(string policyName, string configKey, int defaultLimit) =>
+            options.AddPolicy(policyName, context => RateLimitPartition.GetFixedWindowLimiter(
+                context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = context.RequestServices.GetRequiredService<IConfiguration>().GetValue(configKey, defaultLimit),
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                }));
+        AddPerIpPolicy("register", "RateLimiting:Register:PermitLimit", 5);
+        AddPerIpPolicy("password-reset-request", "RateLimiting:PasswordResetRequest:PermitLimit", 5);
+        AddPerIpPolicy("password-reset", "RateLimiting:PasswordReset:PermitLimit", 10);
         options.AddPolicy("refresh", context => RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new FixedWindowRateLimiterOptions
@@ -304,6 +319,10 @@ try
 
     var app = builder.Build();
 
+    // PasswordHasher builds its dummy hash (a full Argon2 run) when first created; do it now so
+    // the first login attempt does not take longer than the rest.
+    app.Services.GetRequiredService<PasswordHasher>();
+
     if (app.Environment.IsDevelopment())
     {
         using var migrationScope = app.Services.CreateScope();
@@ -328,9 +347,14 @@ try
 		var mediaSettings = builder.Configuration.GetSection("Media").Get<MediaSettings>()
 		?? throw new InvalidOperationException("Missing required 'Media' configuration section.");
 
+		var uploadFolder = mediaSettings.UploadFolder
+			?? throw new InvalidOperationException("Missing required 'Media:UploadFolder' configuration value.");
+		// PhysicalFileProvider throws if the folder is missing (fresh machine / first run).
+		Directory.CreateDirectory(uploadFolder);
+
 		app.UseStaticFiles(new StaticFileOptions
 		{
-			FileProvider = new PhysicalFileProvider(mediaSettings.UploadFolder),
+			FileProvider = new PhysicalFileProvider(uploadFolder),
 			RequestPath = "/media"
 		});
 

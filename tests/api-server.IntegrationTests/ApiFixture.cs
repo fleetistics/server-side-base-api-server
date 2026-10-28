@@ -28,6 +28,12 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     public const string TestUserName = "test.user";
     public const string TestPassword = "integration-test-password";
 
+    /// <summary>
+    /// What the seeded user's Password column holds. Hashed once for the whole run (Argon2 is
+    /// deliberately slow); tests compare against it to check "password unchanged".
+    /// </summary>
+    public static readonly string TestPasswordHash = new PasswordHasher().Hash(TestPassword);
+
     // The app registers Npgsql with UseNetTopologySuite(), so schema creation issues
     // CREATE EXTENSION postgis — the plain postgres image doesn't ship it.
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
@@ -42,8 +48,21 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     public string MediaUploadFolder { get; } =
         Path.Combine(Path.GetTempPath(), $"api-tests-media-{Guid.NewGuid():N}");
 
+    /// <summary>Stands in for the e-mail channel so tests can read the reset keys the API issues.</summary>
+    public CapturingPasswordResetKeySender ResetKeySender { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.ConfigureServices(services =>
+        {
+            services.AddSingleton<IPasswordResetKeySender>(ResetKeySender);
+
+            // The host starts before the schema exists (EnsureCreated below needs the host's
+            // context), so hosted services that query on startup — NotificationService's sweep —
+            // fail once. By default that stops and disposes the whole host; here it must not.
+            services.Configure<HostOptions>(o => o.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore);
+        });
+
         // Not "Development": skips the dev-only static-files branch (which requires a
         // real Media:UploadFolder) and never loads appsettings.Development.json.
         builder.UseEnvironment("Testing");
@@ -116,11 +135,8 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             $$ LANGUAGE plpgsql;
             """);
 
-        // The schema is created through a throwaway host with its hosted services removed. The real host's
-        // background services (log retention, media previews, the notification sweep) query their tables the
-        // moment it starts, and the first one to fail stops the host - so the tables must exist before it starts.
-        using (var schemaHost = WithWebHostBuilder(b => b.ConfigureTestServices(s => s.RemoveAll<IHostedService>())))
-        using (var scope = schemaHost.Services.CreateScope())
+        // Touching Services builds the host, which needs the container's connection string.
+        using (var scope = Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MainDatabaseContext>();
             await db.Database.EnsureCreatedAsync();
@@ -128,20 +144,25 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
         // LatestUpdate columns are ValueGeneratedOnAddOrUpdate: EF never sends a value and
         // expects the database to produce one. The production schema has defaults/triggers;
-        // EnsureCreated does not generate them, so add the defaults here - for every table that has
-        // the column, found from the schema rather than listed by hand (a list goes stale as soon as
-        // a table is added or renamed, which is how this fixture once stopped starting at all).
+        // EnsureCreated does not generate them, so add the defaults here.
         await ExecuteSqlAsync(
             """
-            DO $$
-            DECLARE t record;
-            BEGIN
-                FOR t IN SELECT table_name FROM information_schema.columns
-                         WHERE table_schema = 'public' AND column_name = 'LatestUpdate'
-                LOOP
-                    EXECUTE format('ALTER TABLE %I ALTER COLUMN "LatestUpdate" SET DEFAULT now()', t.table_name);
-                END LOOP;
-            END $$;
+            ALTER TABLE "user" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "user_status" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "user_session" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "uploaded_media" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "client_log_record" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "language" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "translation_token" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "translation" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "user_settings" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "team" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "team_details" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "team_member_user" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "team_uploaded_media" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "user_location_privacy" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "user_emergency_alert" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            ALTER TABLE "mobile_gps_device" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
             """);
 
         await using (var connection = new NpgsqlConnection(_postgres.GetConnectionString()))
@@ -234,6 +255,28 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
     }
 
     public sealed record LoginResponse(string AccessToken, int UserId, int SessionId, string? PreferredLanguage);
+}
+
+public sealed class CapturingPasswordResetKeySender : IPasswordResetKeySender
+{
+    private readonly ConcurrentDictionary<int, List<string>> _keys = new();
+    private readonly ConcurrentDictionary<int, string?> _recipients = new();
+
+    public Task SendAsync(User user, string? recipientEmail, string resetKey, DateTime expiresAtUtc, CancellationToken cancellationToken)
+    {
+        _keys.AddOrUpdate(user.Id, _ => [resetKey], (_, list) => { lock (list) { list.Add(resetKey); } return list; });
+        _recipients[user.Id] = recipientEmail;
+        return Task.CompletedTask;
+    }
+
+    public string? LatestKeyFor(int userId) => _keys.TryGetValue(userId, out var list) ? list[^1] : null;
+
+    /// <summary>Every key sent to the user, oldest first.</summary>
+    public IReadOnlyList<string> KeysFor(int userId) => _keys.TryGetValue(userId, out var list) ? [.. list] : [];
+
+    public string? RecipientFor(int userId) => _recipients.GetValueOrDefault(userId);
+    public bool HasKeyFor(int userId) => _keys.ContainsKey(userId);
+    public void Clear() { _keys.Clear(); _recipients.Clear(); }
 }
 
 [CollectionDefinition(Name)]
