@@ -8,6 +8,7 @@ using api_server.Controllers.Translations;
 using api_server.Users;
 using api_server.Idempotency;
 using api_server.Service;
+using api_server.Services.Feeders;
 using exs.dbContextCommons;
 using mf.aiApi.mainDatabase.DatabaseContext;
 using exs.notifications_service;
@@ -52,6 +53,8 @@ namespace api_server.core
 				.AddSingleton<MockTeamMemberMove>()
 				.AddSingleton<IMockTeamMemberMove>(sp => sp.GetRequiredService<MockTeamMemberMove>())
 				.AddHostedService(sp => sp.GetRequiredService<MockTeamMemberMove>())
+				// Tells the feeders which company's map is being watched (best effort; off unless Feeders:Heartbeat:BaseUrl is set).
+				.AddFeederHeartbeat(configuration)
 				.AddMemoryCache()
 				.AddSingleton<IdempotencyStore>()
 				;

@@ -8,6 +8,8 @@ namespace db_model.Gps
     {
         public int Id { get; set; }
         public int ProviderId { get; set; }
+        /// <summary><see cref="GpsDeviceType"/> id (a leaf of the type tree); null when unknown.</summary>
+        public int? TypeId { get; set; }
 
         public short StatusId { get; set; }
 
@@ -16,6 +18,7 @@ namespace db_model.Gps
         public DateTime LatestUpdate { get; set; }
 
         public int? UserId { get; set; }
+        public int? CompanyId { get; set; }
         
         public string? Name { get; set; }
 

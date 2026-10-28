@@ -17,6 +17,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			createTranslationModel(modelBuilder);
 			createGpsModel(modelBuilder);
 			createMapModel(modelBuilder);
+			createFleetModel(modelBuilder);
 			createTeamModel(modelBuilder);
 			createMessageModel(modelBuilder);
 		}

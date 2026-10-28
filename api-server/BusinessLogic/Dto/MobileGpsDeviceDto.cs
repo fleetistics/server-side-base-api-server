@@ -6,7 +6,7 @@ namespace api_server.BusinessLogic.Dto
     {
         public MobileGpsDeviceDto() { }
 
-        public MobileGpsDeviceDto(MobileGpsDevice model)
+        public MobileGpsDeviceDto(GpsDevice model)
         {
             Id = model.Id;
             UserId = model.UserId!.Value;

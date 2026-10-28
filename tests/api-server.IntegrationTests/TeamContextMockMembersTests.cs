@@ -166,7 +166,7 @@ public sealed class TeamContextMockMembersTests
         foreach (var m in await db.Set<TeamMemberUser>().AsNoTracking().Where(m => m.TeamId == teamId).ToListAsync())
         {
             var user = await db.Set<User>().AsNoTracking().SingleAsync(u => u.Id == m.UserId);
-            var state = await db.Set<MobileGpsDeviceMapState>().AsNoTracking().Where(s => s.UserId == m.UserId).ToListAsync();
+            var state = await (from s in db.Set<GpsDeviceMapState>() join d in db.Set<GpsDevice>() on s.GpsDeviceId equals d.Id where d.UserId == m.UserId select s).AsNoTracking().ToListAsync();
             sb.AppendLine($"  user {m.UserId}: member.LatestUpdate={m.LatestUpdate:HH:mm:ss.fff} (status {m.StatusId}), user.LatestUpdate={user.LatestUpdate:HH:mm:ss.fff}, " +
                           $"mapState.LatestOnMapUpdate=[{string.Join(", ", state.Select(s => s.LatestOnMapUpdate.ToString("HH:mm:ss.fff")))}]");
         }
@@ -211,11 +211,12 @@ public sealed class TeamContextMockMembersTests
 
     private Task<int> CreateDeviceAsync(int userId) => _fixture.QueryDbAsync(async db =>
     {
-        var device = new MobileGpsDevice
+        var device = new GpsDevice
         {
-            ProviderId = 1,
+            ProviderId = GpsDeviceProvider.Mobile,
+            TypeId = GpsDeviceType.MobileAndroid,
             StatusId = 1,
-            DeviceUID = Guid.NewGuid().ToString("N"),
+            SerialNumber = Guid.NewGuid().ToString("N"),
             UserId = userId,
         };
         db.Add(device);
@@ -225,12 +226,16 @@ public sealed class TeamContextMockMembersTests
 
     private Task UpsertMapStateAsync(int deviceId, int userId, double longitude, double latitude) => _fixture.QueryDbAsync(async db =>
     {
-        db.Add(new MobileGpsDeviceMapState
+        var now = DateTime.UtcNow;
+        db.Add(new GpsDeviceMapState
         {
-            MobileGpsDeviceId = deviceId,
-            UserId = userId,
+            GpsDeviceId = deviceId,
             Location = new Point(longitude, latitude),
-            LatestOnMapUpdate = DateTime.UtcNow,
+            StatusId = GpsDeviceMapStatus.Parked,
+            StatusChangedAt = now,
+            LastPositionAt = now,
+            LastCommunicationAt = now,
+            LatestOnMapUpdate = now,
         });
         await db.SaveChangesAsync();
         return true;

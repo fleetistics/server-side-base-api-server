@@ -26,6 +26,18 @@ namespace api_server.core
 			Meter.CreateHistogram<long>("app.client_log.payload_size", unit: "By",
 				description: "Decompressed size of flight-recorder uploads");
 
+		/// <summary>Heartbeats the feeders accepted (a company's live map was reported).</summary>
+		public static readonly Counter<long> FeederHeartbeatSent =
+			Meter.CreateCounter<long>("app.feeder_heartbeat.sent", description: "Feeder heartbeats accepted");
+
+		/// <summary>Heartbeats that failed, by result: rejected (bad key), unavailable (feeder down or overloaded), invalid (refused for one company).</summary>
+		public static readonly Counter<long> FeederHeartbeatFailed =
+			Meter.CreateCounter<long>("app.feeder_heartbeat.failed", description: "Feeder heartbeats that failed");
+
+		/// <summary>Heartbeats not sent, by reason: backoff (feeder recently failed), queue_full.</summary>
+		public static readonly Counter<long> FeederHeartbeatDropped =
+			Meter.CreateCounter<long>("app.feeder_heartbeat.dropped", description: "Feeder heartbeats not sent");
+
 		/// <summary>Distribution of uploaded media file sizes.</summary>
 		public static readonly Histogram<long> MediaUploadBytes =
 			Meter.CreateHistogram<long>("app.media.upload_size", unit: "By",

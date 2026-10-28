@@ -150,6 +150,9 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             _respawner = await Respawner.CreateAsync(connection, new RespawnerOptions
             {
                 DbAdapter = DbAdapter.Postgres,
+                // Model-seeded (HasData) rows that code and foreign keys depend on: wiping them would break every
+                // test that creates a device with a TypeId.
+                TablesToIgnore = [new Respawn.Graph.Table("gps_device_type")],
             });
         }
 

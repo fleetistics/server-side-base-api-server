@@ -6,16 +6,19 @@ namespace api_server.Controllers.MapData.Dto
     {
         public MobileGpsDeviceMapStateDto() { }
 
-        public MobileGpsDeviceMapStateDto(MobileGpsDeviceMapState model)
+        /// <summary>
+        /// Same wire shape as before the phones moved to gps_device_map_state: Speed goes back to m/s (the table keeps
+        /// km/h), motion activity and battery come from the state data JSON.
+        /// </summary>
+        public MobileGpsDeviceMapStateDto(GpsDeviceMapState model, int userId, string? stateData)
         {
-            MobileGpsDeviceId = model.MobileGpsDeviceId;
-            UserId = model.UserId;
+            MobileGpsDeviceId = model.GpsDeviceId;
+            UserId = userId;
             Latitude = model.Location.Y;
             Longitude = model.Location.X;
-            MotionActivity = model.MotionActivity;
-            Speed = model.Speed;
+            Speed = model.Speed / Services.PhoneMapState.KmhPerMs;
             Dir = model.Dir;
-            BatteryLevel = model.BatteryLevel;
+            (MotionActivity, BatteryLevel) = Services.PhoneMapState.ReadValues(stateData);
             LatestOnMapUpdate = model.LatestOnMapUpdate;
         }
 

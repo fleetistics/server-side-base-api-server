@@ -1,3 +1,4 @@
+using db_model.Gps;
 using db_model.Map;
 using db_model.UserManagement;
 using exs.Commons.Utils;
@@ -255,16 +256,13 @@ namespace api_server.Controllers.MapData.Services
 			using var scope = mScopeFactory.CreateScope();
 			var repository = scope.ServiceProvider.GetRequiredService<IRepository>();
 
-			var mapState = await repository.GetByIdAsync<MobileGpsDeviceMapState>(command.MobileGpsDeviceId, cancellationToken);
-			if (mapState == null )
+			// The phone is a gps_device of provider Mobile; its current state lives in gps_device_map_state.
+			var device = await repository.GetByIdAsync<GpsDevice>(command.MobileGpsDeviceId, cancellationToken);
+			if (device == null || device.ProviderId != GpsDeviceProvider.Mobile)
 			{
-                mapState = new MobileGpsDeviceMapState { 
-					MobileGpsDeviceId = command.MobileGpsDeviceId,
-                    UserId = command.UserId
-                };
-                repository.Create(mapState);
-
-            }
+				mLogger.LogWarning("Dropping {Count} track points: device {DeviceId} is not a mobile gps_device", command.TrackPoints.Count, command.MobileGpsDeviceId);
+				return;
+			}
             MobileGpsDeviceTrackPoint latestMobileGpsDeviceTrackPoint = command.TrackPoints[0];
 
             foreach (var point in command.TrackPoints)
@@ -278,14 +276,10 @@ namespace api_server.Controllers.MapData.Services
 			}
 
 
-			mapState.TeamId = command.TeamId;
-			mapState.Location = latestMobileGpsDeviceTrackPoint.Location;
-			mapState.MotionActivity = latestMobileGpsDeviceTrackPoint.MotionActivity;
-			mapState.Speed = latestMobileGpsDeviceTrackPoint.Speed;
-			mapState.Dir = latestMobileGpsDeviceTrackPoint.Dir;
-			mapState.BatteryLevel = latestMobileGpsDeviceTrackPoint.BatteryLevel;
-			mapState.LatestOnMapUpdate = latestMobileGpsDeviceTrackPoint.ReceivedDate;
-
+			var latest = latestMobileGpsDeviceTrackPoint;
+			await PhoneMapState.ApplyAsync(repository, device.Id, device.CompanyId, new PhoneFix(
+				latest.Location, latest.Speed, latest.Dir, latest.MotionActivity, latest.BatteryLevel, latest.BatteryIsCharging,
+				PhoneMapState.TrustedPositionAt(latest.DeviceDate, latest.ReceivedDate), latest.ReceivedDate), cancellationToken);
 
             await repository.SaveAsync(cancellationToken);
 		}

@@ -644,11 +644,12 @@ public sealed class TeamContextApiTests : IAsyncLifetime
     {
         return await _fixture.QueryDbAsync(async db =>
         {
-            var device = new MobileGpsDevice
+            var device = new GpsDevice
             {
-                ProviderId = 1,
+                ProviderId = GpsDeviceProvider.Mobile,
+                TypeId = GpsDeviceType.MobileAndroid,
                 StatusId = 1,
-                DeviceUID = Guid.NewGuid().ToString("N"),
+                SerialNumber = Guid.NewGuid().ToString("N"),
                 UserId = userId,
             };
             db.Add(device);
@@ -661,14 +662,17 @@ public sealed class TeamContextApiTests : IAsyncLifetime
     {
         await _fixture.QueryDbAsync(async db =>
         {
-            var state = await db.Set<MobileGpsDeviceMapState>().SingleOrDefaultAsync(s => s.MobileGpsDeviceId == deviceId);
+            var state = await db.Set<GpsDeviceMapState>().SingleOrDefaultAsync(s => s.GpsDeviceId == deviceId);
             if (state == null)
             {
-                db.Add(new MobileGpsDeviceMapState
+                db.Add(new GpsDeviceMapState
                 {
-                    MobileGpsDeviceId = deviceId,
-                    UserId = userId,
+                    GpsDeviceId = deviceId,
                     Location = new Point(longitude, latitude),
+                    StatusId = GpsDeviceMapStatus.Parked,
+                    StatusChangedAt = latestOnMapUpdate,
+                    LastPositionAt = latestOnMapUpdate,
+                    LastCommunicationAt = latestOnMapUpdate,
                     LatestOnMapUpdate = latestOnMapUpdate,
                 });
             }

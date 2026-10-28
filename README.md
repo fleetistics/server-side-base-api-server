@@ -150,6 +150,33 @@ UI at `http://localhost:3000` (see compose file for credentials).
 introduce breaking changes with `[ApiVersion("2.0")]` on the controller instead of
 new route trees.
 
+**GPS devices** — one `gps_device` table for every tracked thing: phones running our app (provider
+`Mobile`, `SerialNumber` = the app's `DeviceUID`, no company) and Geotab trackers (provider `Geotab`,
+`CompanyId` set, written by `server-side-feeders`). `gps_device.TypeId` points into the `gps_device_type`
+tree (Mobile → Android / iOS; Geotab models such as GO9 are added by the feeders' asset sync); a device's
+`ProviderId` must equal its type's. `(ProviderId, SerialNumber)` is unique, so a second login of the same
+phone finds its device. The old `mobile_gps_device` / `mobile_gps_device_provider` tables are no longer
+mapped: migration `20261028133018_20261028153014` copied their rows into `gps_device` **keeping the ids**
+(session tokens and emergency alerts still point at the same device) and left the tables in place for one
+release; drop them by hand afterwards. A phone's current state is written to the same
+`gps_device_map_state` / `gps_device_state_data` rows as a tracker's (`PhoneMapState` in
+`Controllers/MapData/Services`, used by the location-report worker): speed is stored in km/h (the wire
+format keeps m/s), status is Moving above 3 km/h, Idle while the phone reports `in_vehicle`, else Parked,
+an older fix never overwrites a newer one (a phone clock more than 5 minutes ahead is ignored), and the
+battery level, charging flag and motion activity go into the state data JSON. `CompanyId` is null for
+phones. Not done: setting phones Offline when they stop reporting, and `LowBattery` (the battery scale is
+not pinned down). The old `mobile_gps_device_map_state` rows were not copied (phones refill the new rows
+as they report) and nothing reads that table any more; the track points still go to
+`mobile_gps_device_track_point`.
+
+**Feeder heartbeat** — `IFeederHeartbeat.CompanyWatched(companyId)` (in `Services/Feeders`) tells
+the feeders (`server-side-feeders`) that somebody is looking at a company's map, so they poll
+its accounts every ~2 s instead of every 30 s. Call it wherever a company's live map data is
+served; it is cheap, never blocks, never throws, sends at most one `POST /v1/companies/{id}/live`
+per company per 10 s and pauses for 30 s after a failure. It is **off** until
+`Feeders:Heartbeat:BaseUrl` (and `ApiKey`, a secret: keep it in `local_configs`) is set; see
+`server-side-feeders/README.md`. Counters: `app.feeder_heartbeat.sent|failed|dropped`.
+
 ## Trying the real email sender
 
 `POST /api/test/email` sends one mail through the real email sender, `GET /api/test/email/{reference}` shows its

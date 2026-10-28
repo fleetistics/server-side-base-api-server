@@ -1,5 +1,6 @@
 using api_server.BusinessLogic.Dto;
 using api_server.Controllers.MapData.Dto;
+using api_server.Controllers.MapData.Services;
 using api_server.Medias;
 using api_server.Controllers.Messages;
 using api_server.Controllers.Teams.Dto;
@@ -194,8 +195,8 @@ namespace api_server.Controllers.Teams.Services
             }
 			else
 			{
-				delta.MobileGpsDevices = await mRepository.GetQueryable<MobileGpsDevice>(e => e.UserId != null && allMemberIds.Contains(e.UserId.Value) && e.StatusId == GpsDeviceStatus.Active).Select(s => new MobileGpsDeviceDto(s)).ToListAsync(cancellationToken);
-                delta.GpsDeviceMapStates = await mRepository.GetQueryable<MobileGpsDeviceMapState>(e => nonPrivateMemberIds.Contains(e.UserId) ).Select(s => new MobileGpsDeviceMapStateDto(s)).ToListAsync(cancellationToken);
+				delta.MobileGpsDevices = await mRepository.GetQueryable<GpsDevice>(e => e.ProviderId == GpsDeviceProvider.Mobile && e.UserId != null && allMemberIds.Contains(e.UserId.Value) && e.StatusId == GpsDeviceStatus.Active).Select(s => new MobileGpsDeviceDto(s)).ToListAsync(cancellationToken);
+                delta.GpsDeviceMapStates = await loadPhoneMapStatesAsync(nonPrivateMemberIds, new List<int>(), DateTime.MinValue, cancellationToken);
 				delta.UserAlerts = await mRepository.GetQueryable<UserEmergencyAlert>(e => allMemberIds.Contains(e.UserId) && e.StatusId == UserEmergencyAlertStatus.Active).Select(s => new ActiveUserEmergencyAlertDto(s)).ToListAsync(cancellationToken);
 
                 // loadDevicesAsync/etc. always return a list, even when empty - null it back out
@@ -436,7 +437,7 @@ namespace api_server.Controllers.Teams.Services
             }
 			if (updateMapStateUserIds.Count > 0 || loadMapStateUserIds.Count > 0)
 			{
-                delta.GpsDeviceMapStates = await mRepository.GetQueryable<MobileGpsDeviceMapState>(e => (updateMapStateUserIds.Contains(e.UserId) && e.LatestOnMapUpdate > since) || loadMapStateUserIds.Contains(e.UserId)).Select(s => new MobileGpsDeviceMapStateDto(s)).ToListAsync(cancellationToken);
+                delta.GpsDeviceMapStates = await loadPhoneMapStatesAsync(loadMapStateUserIds, updateMapStateUserIds, since, cancellationToken);
             }
             if (teamUserIds.Count > 0 || loadMemberDetailsUserIds.Count > 0)
 			{
@@ -453,7 +454,7 @@ namespace api_server.Controllers.Teams.Services
 					}
                 }
 
-                var devices = await mRepository.GetQueryable<MobileGpsDevice>(e => e.UserId != null && ((teamUserIds.Contains(e.UserId.Value) && e.LatestUpdate > since) || loadMemberDetailsUserIds.Contains(e.UserId.Value))).AsNoTracking().ToListAsync(cancellationToken);
+                var devices = await mRepository.GetQueryable<GpsDevice>(e => e.ProviderId == GpsDeviceProvider.Mobile && e.UserId != null && ((teamUserIds.Contains(e.UserId.Value) && e.LatestUpdate > since) || loadMemberDetailsUserIds.Contains(e.UserId.Value))).AsNoTracking().ToListAsync(cancellationToken);
                 foreach (var device in devices)
                 {
                     if (device.StatusId == GpsDeviceStatus.Active)
@@ -526,6 +527,27 @@ namespace api_server.Controllers.Teams.Services
 		// the next call, which is harmless: the client applies records as upserts.
 		private static long toCursor(DateTime value) =>
 			new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc)).ToUnixTimeMilliseconds();
+
+		/// <summary>
+		/// Current map states of the users' phones: every state of <paramref name="loadUserIds"/>, plus the states of
+		/// <paramref name="updatedUserIds"/> changed after <paramref name="since"/>. A phone is a mobile gps_device whose
+		/// UserId says whose it is; its motion activity and battery sit in the state data JSON.
+		/// </summary>
+		private async Task<List<MobileGpsDeviceMapStateDto>> loadPhoneMapStatesAsync(IEnumerable<int> loadUserIds, IEnumerable<int> updatedUserIds, DateTime since, CancellationToken cancellationToken)
+		{
+			var load = loadUserIds.ToList();
+			var updated = updatedUserIds.ToList();
+			var rows = await (
+				from s in mRepository.GetQueryable<GpsDeviceMapState>()
+				join d in mRepository.GetQueryable<GpsDevice>(x => x.ProviderId == GpsDeviceProvider.Mobile && x.UserId != null) on s.GpsDeviceId equals d.Id
+				where load.Contains(d.UserId!.Value) || (updated.Contains(d.UserId!.Value) && s.LatestOnMapUpdate > since)
+				join sd in mRepository.GetQueryable<GpsDeviceStateData>() on s.GpsDeviceId equals sd.GpsDeviceId into sds
+				from sd in sds.DefaultIfEmpty()
+				select new { State = s, UserId = d.UserId!.Value, Data = sd != null ? sd.Data : null })
+				.AsNoTracking()
+				.ToListAsync(cancellationToken);
+			return rows.Select(r => new MobileGpsDeviceMapStateDto(r.State, r.UserId, r.Data)).ToList();
+		}
 
 		private readonly IRepository mRepository;
 		private readonly MediaUrlResolver mMediaUrls;

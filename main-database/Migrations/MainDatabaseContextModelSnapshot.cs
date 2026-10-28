@@ -19,11 +19,34 @@ namespace main_database.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("db_model.Companies.Company", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("company", (string)null);
+                });
 
             modelBuilder.Entity("db_model.Gps.GpsDevice", b =>
                 {
@@ -32,6 +55,9 @@ namespace main_database.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
@@ -52,10 +78,21 @@ namespace main_database.Migrations
                     b.Property<short>("StatusId")
                         .HasColumnType("smallint");
 
+                    b.Property<int?>("TypeId")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("UserId")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("TypeId");
+
+                    b.HasIndex("ProviderId", "SerialNumber")
+                        .IsUnique()
+                        .HasFilter("\"ProviderId\" = 4");
 
                     b.ToTable("gps_device", (string)null);
                 });
@@ -103,7 +140,7 @@ namespace main_database.Migrations
                     b.ToTable("gps_device_status", (string)null);
                 });
 
-            modelBuilder.Entity("db_model.Gps.MobileGpsDevice", b =>
+            modelBuilder.Entity("db_model.Gps.GpsDeviceType", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -111,10 +148,6 @@ namespace main_database.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("DeviceUID")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -122,43 +155,39 @@ namespace main_database.Migrations
                         .HasDefaultValueSql("now()");
 
                     b.Property<string>("Name")
+                        .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("integer");
 
                     b.Property<int>("ProviderId")
                         .HasColumnType("integer");
 
-                    b.Property<short>("StatusId")
-                        .HasColumnType("smallint");
-
-                    b.Property<int?>("UserId")
-                        .HasColumnType("integer");
-
                     b.HasKey("Id");
 
-                    b.ToTable("mobile_gps_device", (string)null);
-                });
+                    b.HasIndex("ParentId");
 
-            modelBuilder.Entity("db_model.Gps.MobileGpsDeviceProvider", b =>
-                {
-                    b.Property<short>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("smallint");
+                    b.HasIndex("ProviderId", "Name")
+                        .IsUnique();
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+                    b.ToTable("gps_device_type", (string)null);
 
-                    b.Property<DateTime>("LatestUpdate")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("timestamp with time zone")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("mobile_gps_device_provider", (string)null);
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            LatestUpdate = new DateTime(2026, 10, 28, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Android",
+                            ProviderId = 4
+                        },
+                        new
+                        {
+                            Id = 2,
+                            LatestUpdate = new DateTime(2026, 10, 28, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "iOS",
+                            ProviderId = 4
+                        });
                 });
 
             modelBuilder.Entity("db_model.Log.ClientLogRecord", b =>
@@ -217,6 +246,93 @@ namespace main_database.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("gps_location_accuracy", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Map.GpsDeviceMapState", b =>
+                {
+                    b.Property<int>("GpsDeviceId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<short?>("Dir")
+                        .HasColumnType("smallint");
+
+                    b.Property<bool>("EngineFault")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LastCommunicationAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastPositionAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LatestOnMapUpdate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Point>("Location")
+                        .IsRequired()
+                        .HasColumnType("geometry");
+
+                    b.Property<bool>("LowBattery")
+                        .HasColumnType("boolean");
+
+                    b.Property<float?>("Speed")
+                        .HasColumnType("real");
+
+                    b.Property<DateTime>("StatusChangedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.HasKey("GpsDeviceId");
+
+                    b.HasIndex("CompanyId");
+
+                    b.ToTable("gps_device_map_state", (string)null);
+
+                    b.HasAnnotation("Npgsql:StorageParameter:fillfactor", 75);
+                });
+
+            modelBuilder.Entity("db_model.Map.GpsDeviceMapStatus", b =>
+                {
+                    b.Property<byte>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("gps_device_map_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Map.GpsDeviceStateData", b =>
+                {
+                    b.Property<int>("GpsDeviceId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("LatestOnMapUpdate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("GpsDeviceId");
+
+                    b.ToTable("gps_device_state_data", (string)null);
+
+                    b.HasAnnotation("Npgsql:StorageParameter:fillfactor", 75);
                 });
 
             modelBuilder.Entity("db_model.Map.MobileDeviceMotionActivity", b =>
@@ -1463,6 +1579,22 @@ namespace main_database.Migrations
                         .HasDatabaseName("IX_fcm_sent_NotificationId_UserId");
 
                     b.ToTable("fcm_sent", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Gps.GpsDevice", b =>
+                {
+                    b.HasOne("db_model.Gps.GpsDeviceType", null)
+                        .WithMany()
+                        .HasForeignKey("TypeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("db_model.Gps.GpsDeviceType", b =>
+                {
+                    b.HasOne("db_model.Gps.GpsDeviceType", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("db_model.Messages.TeamActivity2User", b =>

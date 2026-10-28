@@ -1,3 +1,4 @@
+using api_server.Controllers.MapData.Services;
 using db_model.Gps;
 using db_model.Map;
 using db_model.Team;
@@ -56,7 +57,7 @@ namespace api_server.Controllers.Teams.Services
 	/// <summary>
 	/// Demo/test helper: once the creator of a "mock members" team reports a location, moves the
 	/// mock users (UserSource = MockUserSourceId) into the team one by one and keeps their
-	/// MobileGpsDeviceMapState moving on circles around the creator. Singleton background worker
+	/// gps_device_map_state rows moving on circles around the creator. Singleton background worker
 	/// (work queue = channel, scope per DB access), same shape as MobileGpsDeviceMapTrackService.
 	/// Jobs live in memory only: they do not survive an app restart, and each one ends when its
 	/// team is no longer Active.
@@ -180,10 +181,12 @@ namespace api_server.Controllers.Teams.Services
 					var repository = scope.ServiceProvider.GetRequiredService<IRepository>();
 					if (!await isTeamActiveAsync(repository, job.TeamId, cancellationToken)) return null;
 
-					var location = await repository.GetQueryable<MobileGpsDeviceMapState>(s => s.UserId == job.CreatorUserId)
+					var location = await (
+							from s in repository.GetQueryable<GpsDeviceMapState>()
+							join d in repository.GetQueryable<GpsDevice>(x => x.ProviderId == GpsDeviceProvider.Mobile && x.UserId == job.CreatorUserId) on s.GpsDeviceId equals d.Id
+							orderby s.LatestOnMapUpdate descending
+							select s.Location)
 						.AsNoTracking()
-						.OrderByDescending(s => s.LatestOnMapUpdate)
-						.Select(s => s.Location)
 						.FirstOrDefaultAsync(cancellationToken);
 					if (location != null) return location;
 				}
@@ -205,15 +208,15 @@ namespace api_server.Controllers.Teams.Services
 				using var scope = mScopeFactory.CreateScope();
 				var repository = scope.ServiceProvider.GetRequiredService<IRepository>();
 
-				// MobileGpsDeviceMapState is keyed by device, so every mock user needs one.
-				var device = await repository.GetQueryable<MobileGpsDevice>(d => d.UserId == userId).OrderBy(d => d.Id).FirstOrDefaultAsync(cancellationToken);
+				// The map state is keyed by device, so every mock user needs one.
+				var device = await repository.GetQueryable<GpsDevice>(d => d.ProviderId == GpsDeviceProvider.Mobile && d.UserId == userId).OrderBy(d => d.Id).FirstOrDefaultAsync(cancellationToken);
 				if (device == null)
 				{
-					device = new MobileGpsDevice
+					device = new GpsDevice
 					{
 						UserId = userId,
-						DeviceUID = "mock-" + userId,
-						ProviderId = GpsDeviceProvider.Unknown,
+						SerialNumber = "mock-" + userId,
+						ProviderId = GpsDeviceProvider.Mobile,
 						StatusId = GpsDeviceStatus.Active
 					};
 					repository.Create(device);
@@ -249,13 +252,7 @@ namespace api_server.Controllers.Teams.Services
 					Angle = Random.Shared.NextDouble() * 2 * Math.PI
 				};
 
-				var mapState = await repository.GetByIdAsync<MobileGpsDeviceMapState>(device.Id, cancellationToken);
-				if (mapState == null)
-				{
-					mapState = new MobileGpsDeviceMapState { MobileGpsDeviceId = device.Id };
-					repository.Create(mapState);
-				}
-				applyToMapState(mapState, member, job, creatorLocation);
+				await PhoneMapState.ApplyAsync(repository, device.Id, device.CompanyId, buildFix(member, creatorLocation), cancellationToken);
 
 				await repository.SaveAsync(cancellationToken);
 				mLogger.LogInformation("Mock members for team {TeamId}: user {UserId} switched to the team", job.TeamId, userId);
@@ -280,19 +277,11 @@ namespace api_server.Controllers.Teams.Services
 			if (!await isTeamActiveAsync(repository, job.TeamId, cancellationToken)) return false;
 			if (members.Count == 0) return true;
 
-			var deviceIds = members.Select(m => m.DeviceId).ToList();
-			var states = (await repository.GetQueryable<MobileGpsDeviceMapState>(s => deviceIds.Contains(s.MobileGpsDeviceId)).ToListAsync(cancellationToken))
-				.ToDictionary(s => s.MobileGpsDeviceId);
 			foreach (var member in members)
-			{
-				advance(member, member.SpeedMs * elapsedSeconds);
-				if (!states.TryGetValue(member.DeviceId, out var state))
 				{
-					state = new MobileGpsDeviceMapState { MobileGpsDeviceId = member.DeviceId };
-					repository.Create(state);
+					advance(member, member.SpeedMs * elapsedSeconds);
+					await PhoneMapState.ApplyAsync(repository, member.DeviceId, null, buildFix(member, creatorLocation), cancellationToken);
 				}
-				applyToMapState(state, member, job, creatorLocation);
-			}
 			await repository.SaveAsync(cancellationToken);
 			return true;
 		}
@@ -343,20 +332,15 @@ namespace api_server.Controllers.Teams.Services
 			}
 		}
 
-		private void applyToMapState(MobileGpsDeviceMapState state, Member m, Job job, Point creatorLocation)
+		private PhoneFix buildFix(Member m, Point creatorLocation)
 		{
 			var northKm = m.CenterNorthKm + m.Y / 1000;
 			var eastKm = m.CenterEastKm + m.X / 1000;
 			var latitude = creatorLocation.Y + northKm / KmPerDegreeLat;
 			var longitude = creatorLocation.X + eastKm / (KmPerDegreeLat * Math.Cos(creatorLocation.Y * Math.PI / 180));
 
-			state.UserId = m.UserId;
-			state.TeamId = job.TeamId;
-			state.Location = mGeometryFactory.CreatePoint(new Coordinate(longitude, latitude));
-			state.Speed = (float)m.SpeedMs;
-			state.Dir = m.Heading;
-			state.MotionActivity = m.SpeedMs * 3.6 < 12 ? MobileDeviceMotionActivity.Running : MobileDeviceMotionActivity.OnBicycle;
-			state.LatestOnMapUpdate = DateTime.UtcNow;
+			var now = DateTime.UtcNow;
+			return new PhoneFix(mGeometryFactory.CreatePoint(new Coordinate(longitude, latitude)), (float)m.SpeedMs, m.Heading, m.SpeedMs * 3.6 < 12 ? MobileDeviceMotionActivity.Running : MobileDeviceMotionActivity.OnBicycle, null, null, now, now);
 		}
 
 		// Uniform over the disc (sqrt keeps points from bunching at the centre); result is (east, north) in km.
