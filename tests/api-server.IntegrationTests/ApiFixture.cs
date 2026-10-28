@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using api_server.Auth;
 using db_model.UserManagement;
 using exs.Database.Commons.Interfaces;
 using mf.aiApi.mainDatabase.DatabaseContext;
@@ -80,6 +82,17 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         // Every test logs in; the brute-force limiter must not throttle the suite.
         Environment.SetEnvironmentVariable("RateLimiting__Login__PermitLimit", "100000");
         Environment.SetEnvironmentVariable("RateLimiting__Refresh__PermitLimit", "100000");
+        // Same for the registration / password-reset limiters. Set as host settings (not env
+        // vars) so a test can lower one through WithWebHostBuilder(UseSetting) — env vars would win.
+        builder.UseSetting("RateLimiting:Register:PermitLimit", "100000");
+        builder.UseSetting("RateLimiting:PasswordResetRequest:PermitLimit", "100000");
+        builder.UseSetting("RateLimiting:PasswordReset:PermitLimit", "100000");
+        // The production minimum response time would add a second to every reset request; the
+        // test that covers it turns it back on.
+        builder.UseSetting("Auth:PasswordResetMinResponseMilliseconds", "0");
+        // Suites log in and fail logins as the same user many times over; the per-account lock
+        // would trip on that. The tests for it switch it back on.
+        builder.UseSetting("Auth:LoginMaxFailedAttempts", "0");
 
         // Every fixture starts from the unconfigured host, whatever fixture ran before it in this process.
         foreach (var name in NotificationEnvironmentVariables)
@@ -135,8 +148,14 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             $$ LANGUAGE plpgsql;
             """);
 
-        // Touching Services builds the host, which needs the container's connection string.
-        using (var scope = Services.CreateScope())
+        // The schema is created through a throwaway host with its hosted services removed. The real host's
+        // background services (log retention, media previews, the notification sweep) query their tables the
+        // moment it starts, and the first one to fail stops for good (even with BackgroundServiceExceptionBehavior.Ignore
+        // the notification pipeline would never run), so the tables must exist before the real host starts.
+        // The schema still comes from a host's own context: NotificationsModelBuilder guards with a static flag, so a
+        // standalone context built separately would come out without the notification entities.
+        using (var schemaHost = WithWebHostBuilder(b => b.ConfigureTestServices(s => s.RemoveAll<IHostedService>())))
+        using (var scope = schemaHost.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<MainDatabaseContext>();
             await db.Database.EnsureCreatedAsync();
@@ -144,25 +163,20 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 
         // LatestUpdate columns are ValueGeneratedOnAddOrUpdate: EF never sends a value and
         // expects the database to produce one. The production schema has defaults/triggers;
-        // EnsureCreated does not generate them, so add the defaults here.
+        // EnsureCreated does not generate them, so add the defaults here - for every table that has
+        // the column, found from the schema rather than listed by hand (a list goes stale as soon as
+        // a table is added or renamed, which is how this fixture once stopped starting at all).
         await ExecuteSqlAsync(
             """
-            ALTER TABLE "user" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_status" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_session" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "uploaded_media" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "client_log_record" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "language" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "translation_token" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "translation" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_settings" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "team" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "team_details" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "team_member_user" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "team_uploaded_media" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_location_privacy" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "user_emergency_alert" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
-            ALTER TABLE "mobile_gps_device" ALTER COLUMN "LatestUpdate" SET DEFAULT now();
+            DO $$
+            DECLARE t record;
+            BEGIN
+                FOR t IN SELECT table_name FROM information_schema.columns
+                         WHERE table_schema = 'public' AND column_name = 'LatestUpdate'
+                LOOP
+                    EXECUTE format('ALTER TABLE %I ALTER COLUMN "LatestUpdate" SET DEFAULT now()', t.table_name);
+                END LOOP;
+            END $$;
             """);
 
         await using (var connection = new NpgsqlConnection(_postgres.GetConnectionString()))
@@ -200,6 +214,7 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         await using var connection = new NpgsqlConnection(_postgres.GetConnectionString());
         await connection.OpenAsync();
         await _respawner!.ResetAsync(connection);
+        ResetKeySender.Clear();
         await SeedAsync();
     }
 
@@ -232,9 +247,7 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         var user = new User
         {
             UserName = TestUserName,
-            // AuthService currently compares the stored value verbatim (see the TODO on
-            // VerifyPassword) — when hashing lands, this seed changes with it.
-            Password = TestPassword,
+            Password = TestPasswordHash,
             DisplayName = "Test User",
             FullName = "Integration Test User",
             Email = "test.user@example.test",

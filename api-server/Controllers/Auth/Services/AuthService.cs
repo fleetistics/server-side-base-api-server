@@ -214,16 +214,17 @@ namespace api_server.Auth
             sessionClientInfo.AppVersion = clientSideInfo.AppVersion;
             sessionClientInfo.CodeVersion = clientSideInfo.CodeVersion;
         }
-        private Task<short> convertClientSideInfoToGpsDeviceProvider(ClientSideInfo clientSideInfo, SessionClientInfo sessionClientInfo)
+        // Phones are always provider Mobile; the platform decides the device type (null when unknown).
+        private static int? convertClientSideInfoToGpsDeviceTypeId(SessionClientInfo sessionClientInfo)
         {
             switch (sessionClientInfo.PlatformId)
             {
                 case ClientDevicePlatform.Ios:
-                    return Task.FromResult((short)GpsDeviceProvider.Ios);
+                    return GpsDeviceType.MobileIos;
                 case ClientDevicePlatform.Android:
-                    return Task.FromResult((short)GpsDeviceProvider.Android);
+                    return GpsDeviceType.MobileAndroid;
                 default:
-                    return Task.FromResult((short)GpsDeviceProvider.Unknown);
+                    return null;
             }
         }
         public async Task<AuthResult> RefreshAutoDeviceAsync( ClientSideInfo clientSideInfo, CancellationToken cancellationToken)
@@ -242,7 +243,7 @@ namespace api_server.Auth
             if (session is null)
             {
                 var user = await repository.GetQueryable<User>(e => e.UserSourceId == UserSource.AUTO_DeviceUID && e.UserName == clientSideInfo.DeviceUID).FirstOrDefaultAsync(cancellationToken);
-                var gpsDevice = await repository.GetQueryable<MobileGpsDevice>(e => e.DeviceUID == clientSideInfo.DeviceUID).FirstOrDefaultAsync(cancellationToken);
+                var gpsDevice = await repository.GetQueryable<GpsDevice>(e => e.ProviderId == GpsDeviceProvider.Mobile && e.SerialNumber == clientSideInfo.DeviceUID).FirstOrDefaultAsync(cancellationToken);
                 if (user is null)
                 {
                     user = new User
@@ -280,11 +281,12 @@ namespace api_server.Auth
                 session.Token.ExpirationTime = now.AddDays(tokenService.RefreshTokenDays);
                 if (gpsDevice is null)
                 {
-                    gpsDevice = new MobileGpsDevice
+                    gpsDevice = new GpsDevice
                     {
-                        DeviceUID = clientSideInfo.DeviceUID,
+                        SerialNumber = clientSideInfo.DeviceUID,
                         UserId = user.Id,
-                        ProviderId = await convertClientSideInfoToGpsDeviceProvider(clientSideInfo, session.ClientInfo),
+                        ProviderId = GpsDeviceProvider.Mobile,
+                        TypeId = convertClientSideInfoToGpsDeviceTypeId(session.ClientInfo),
                         StatusId = GpsDeviceStatus.Active
                     };
                     repository.Create(gpsDevice);

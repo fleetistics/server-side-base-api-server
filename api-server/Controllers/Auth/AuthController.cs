@@ -45,8 +45,7 @@ namespace api_server.Controllers.Auth
         public async Task<IActionResult> Refresh(ClientSideInfo clientSideInfo, CancellationToken cancellationToken)
         {
             var result = await authService.RefreshLoginAsync(ReadRotationKey(), clientSideInfo, cancellationToken);
-            if (result.Succeeded) return Ok(result.Response?.AccessToken);
-            else return Unauthorized();
+            return HandleSessionResult(result, true);
         }
 
        [HttpPost("/api/auth/check-session")]
