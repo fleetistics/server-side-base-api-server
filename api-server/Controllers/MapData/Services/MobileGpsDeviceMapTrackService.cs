@@ -279,7 +279,7 @@ namespace api_server.Controllers.MapData.Services
 			var latest = latestMobileGpsDeviceTrackPoint;
 			await PhoneMapState.ApplyAsync(repository, device.Id, device.CompanyId, new PhoneFix(
 				latest.Location, latest.Speed, latest.Dir, latest.MotionActivity, latest.BatteryLevel, latest.BatteryIsCharging,
-				PhoneMapState.TrustedPositionAt(latest.DeviceDate, latest.ReceivedDate), latest.ReceivedDate), cancellationToken);
+				PhoneMapState.TrustedPositionAt(latest.DeviceDate, latest.ReceivedDate), latest.ReceivedDate, latest.LocationAccuracy), cancellationToken);
 
             await repository.SaveAsync(cancellationToken);
 		}

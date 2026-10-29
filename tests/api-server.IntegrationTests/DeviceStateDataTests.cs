@@ -140,6 +140,77 @@ public sealed class DeviceStateDataTests
         json["charging"]!["v"]!.GetValue<bool>().ShouldBeTrue();
     }
 
+    [Fact]
+    public void Merge_FirstReport_StartsTheEntry()
+    {
+        var merged = StateValue<short>.Merge(null, 3, T1);
+
+        merged.Value.ShouldBe((short)3);
+        merged.At.ShouldBe(T1);
+        merged.ChangedAt.ShouldBe(T1);
+    }
+
+    [Fact]
+    public void Merge_SameValueLater_MovesReportedTimeButNotChangedTime()
+    {
+        var stored = new StateValue<short>(3, T0, T0);
+
+        var merged = StateValue<short>.Merge(stored, 3, T1);
+
+        merged.At.ShouldBe(T1);
+        merged.ChangedAt.ShouldBe(T0);
+    }
+
+    [Fact]
+    public void Merge_DifferentValueLater_MovesBothTimes()
+    {
+        var merged = StateValue<short>.Merge(new StateValue<short>(3, T0, T0), 1, T1);
+
+        merged.Value.ShouldBe((short)1);
+        merged.ChangedAt.ShouldBe(T1);
+    }
+
+    [Fact]
+    public void Merge_AnEntryWithoutChangedAt_KeepsItsReportedTimeAsTheSince()
+    {
+        var merged = StateValue<short>.Merge(new StateValue<short>(3, T0), 3, T1);
+
+        merged.ChangedAt.ShouldBe(T0);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Merge_ALateOrRepeatedReport_ChangesNothing(bool sameTime)
+    {
+        var stored = new StateValue<short>(3, T1, T1);
+
+        var merged = StateValue<short>.Merge(stored, 1, sameTime ? T1 : T0);
+
+        merged.ShouldBeSameAs(stored);
+    }
+
+    [Fact]
+    public void Set_ReplacesTheStoredEntryEvenWithAnOlderTime_AndDatesTheChange()
+    {
+        var stored = new StateValue<short>(4, T1, T1);
+
+        var set = StateValue<short>.Set(stored, 1, T0);
+
+        set.Value.ShouldBe((short)1);
+        set.At.ShouldBe(T0);
+        set.ChangedAt.ShouldBe(T0);
+    }
+
+    [Fact]
+    public void Set_WithTheSameValue_KeepsTheSinceDate()
+    {
+        var set = StateValue<short>.Set(new StateValue<short>(3, T0, T0), 3, T1);
+
+        set.At.ShouldBe(T1);
+        set.ChangedAt.ShouldBe(T0);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

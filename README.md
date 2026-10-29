@@ -164,21 +164,23 @@ release; drop them by hand afterwards. A phone's current state is written to the
 format keeps m/s), status is Moving above 3 km/h, Idle while the phone reports `in_vehicle`, else Parked,
 an older fix never overwrites a newer one (a phone clock more than 5 minutes ahead is ignored), and the
 battery level, charging flag and motion activity go into the state data JSON. `CompanyId` is null for
-phones. Not done: setting phones Offline when they stop reporting, and `LowBattery` (the battery scale is
-not pinned down). The old `mobile_gps_device_map_state` rows were not copied (phones refill the new rows
+phones. A fix also sets `LocationAccuracyId` from the phone's accuracy and ends StalePosition (the status is
+recomputed). Not done: `LowBattery` (the battery scale is not pinned down). The old `mobile_gps_device_map_state` rows were not copied (phones refill the new rows
 as they report) and nothing reads that table any more; the track points still go to
 `mobile_gps_device_track_point`.
 
 Map state columns (migration `20261029102453_20261029122448`): `StatusId` is visibility (0 Invisible, 1 Visible,
 default 1, more values may follow); `ActivityStatusId` is what `StatusId` used to hold (Unknown, Moving, Idle,
-Parked, Offline; table `gps_device_activity_status`, renamed from `gps_device_map_status`); `WarningFlags` is a
-`GpsDeviceWarning` bit mask (LowBattery 1, EngineFault 2, StalePosition 4); `LocationAccuracyId` is
+Parked, StalePosition; table `gps_device_activity_status`, renamed from `gps_device_map_status`, row 4 was
+"Offline": `UPDATE gps_device_activity_status SET "Name" = 'StalePosition' WHERE "Id" = 4;`); `WarningFlags` is a
+`GpsDeviceWarning` bit mask (LowBattery 1, EngineFault 2; bit 4 is no longer used: StalePosition is an activity
+status now, set by the feeders' sweep when a device sends no position for the configured time); `LocationAccuracyId` is
 `GPSLocationAccuracy` (not null, default Fine). `StatusChangedAt`, `LastCommunicationAt`, `LowBattery` and
 `EngineFault` are no longer mapped; the columns stay in the table for one release (made nullable / defaulted)
 and are dropped by hand. `gps_device.AssetTypeId` points at `gps_asset_type` (what the device is on: phone, car,
-truck ...), separate from `TypeId` (the hardware). The feeders and `PhoneMapState` still need their logic moved
-to the new columns: until then they write the activity into `StatusId` and the battery/fault bits into the old
-columns.
+truck ...), separate from `TypeId` (the hardware). The feeders and `PhoneMapState` write the new columns; the
+dates that `StatusChangedAt` / `LastCommunicationAt` held are the `activityStatus` / `communication` parameters of
+`gps_device_state_data` (`StateValue<T>`, `DeviceStateData`).
 
 **Feeder heartbeat** — `IFeederHeartbeat.CompanyWatched(companyId)` (in `Services/Feeders`) tells
 the feeders (`server-side-feeders`) that somebody is looking at a company's map, so they poll

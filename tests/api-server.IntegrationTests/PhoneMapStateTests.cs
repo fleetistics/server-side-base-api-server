@@ -105,7 +105,7 @@ public sealed class PhoneMapStateFlowTests : IAsyncLifetime
         state.ActivityStatusId.ShouldBe(GpsDeviceActivityStatus.Moving);
         state.StatusId.ShouldBe(GpsDeviceMapStatus.Visible);
         state.WarningFlags.ShouldBe(GpsDeviceWarning.None);
-        state.LocationAccuracyId.ShouldBe(GPSLocationAccuracy.Fine);
+        state.LocationAccuracyId.ShouldBe(GPSLocationAccuracy.Fair); // the fix says 5 m: Fine is under 5
         state.CompanyId.ShouldBeNull();
         state.LastPositionAt.ShouldBe(time, TimeSpan.FromMilliseconds(1));
 
@@ -113,6 +113,50 @@ public sealed class PhoneMapStateFlowTests : IAsyncLifetime
         var (activity, battery) = PhoneMapState.ReadValues(data.Data);
         activity.ShouldBe(MobileDeviceMotionActivity.InVehicle);
         battery.ShouldBe(0.8f);
+
+        var parameters = DeviceStateData.Parse(data.Data);
+        parameters.ActivityStatus!.Value.ShouldBe((short)GpsDeviceActivityStatus.Moving);
+        parameters.ActivityStatus.Since.ShouldBe(time, TimeSpan.FromMilliseconds(1));
+        parameters.Communication!.Value.ShouldBeTrue();
+        parameters.Communication.At.ShouldBe(time, TimeSpan.FromMilliseconds(1));
+    }
+
+    [Fact]
+    public async Task A_phone_marked_StalePosition_leaves_it_with_its_next_position_and_the_change_is_dated()
+    {
+        var (client, deviceId) = await PhoneAsync();
+        var first = DateTime.UtcNow.AddMinutes(-30);
+        (await client.PostAsJsonAsync("/api/mobile-gps/location-report",
+            new[] { Fix(50.45, 30.52, 0f, "still", first, 0.8f, false) })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        await WaitForAsync(() => _fixture.QueryDbAsync(db =>
+            db.Set<GpsDeviceMapState>().AsNoTracking().SingleOrDefaultAsync(s => s.GpsDeviceId == deviceId)));
+        // What the feeders' sweep does to a device that stopped reporting: a status, and a date "now" for it.
+        var swept = DateTime.UtcNow;
+        await _fixture.QueryDbAsync(async db =>
+        {
+            var state = await db.Set<GpsDeviceMapState>().SingleAsync(s => s.GpsDeviceId == deviceId);
+            state.ActivityStatusId = GpsDeviceActivityStatus.StalePosition;
+            var data = await db.Set<GpsDeviceStateData>().SingleAsync(d => d.GpsDeviceId == deviceId);
+            var parameters = DeviceStateData.Parse(data.Data);
+            parameters.ActivityStatus = new StateValue<short>(GpsDeviceActivityStatus.StalePosition, swept, swept);
+            data.Data = parameters.ToJson();
+            await db.SaveChangesAsync();
+            return 0;
+        });
+
+        // The phone reports again, with a fix whose own time is older than the moment the sweep ran.
+        var again = first.AddMinutes(10);
+        (await client.PostAsJsonAsync("/api/mobile-gps/location-report",
+            new[] { Fix(50.46, 30.52, 0f, "in_vehicle", again, 0.7f, false) })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        await WaitForAsync(async () => await _fixture.QueryDbAsync(db =>
+            db.Set<GpsDeviceMapState>().AsNoTracking().Where(s => s.GpsDeviceId == deviceId && s.ActivityStatusId != GpsDeviceActivityStatus.StalePosition).SingleOrDefaultAsync()));
+
+        var state = await _fixture.QueryDbAsync(db => db.Set<GpsDeviceMapState>().AsNoTracking().SingleAsync(s => s.GpsDeviceId == deviceId));
+        state.ActivityStatusId.ShouldBe(GpsDeviceActivityStatus.Idle); // in a vehicle, not moving
+        var data = await _fixture.QueryDbAsync(db => db.Set<GpsDeviceStateData>().AsNoTracking().SingleAsync(d => d.GpsDeviceId == deviceId));
+        var status = DeviceStateData.Parse(data.Data).ActivityStatus!;
+        status.Value.ShouldBe((short)GpsDeviceActivityStatus.Idle); // the entry follows the column even though the sweep's date was newer
+        status.Since.ShouldBe(again, TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]

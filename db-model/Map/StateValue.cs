@@ -27,6 +27,28 @@ namespace db_model.Map
         [JsonIgnore]
         public DateTime Since => ChangedAt ?? At;
 
+        /// <summary>
+        /// The entry after a report of <paramref name="value"/> at <paramref name="at"/>: the stored one when it is as new or newer
+        /// (a late or repeated report changes nothing), otherwise the new value, whose <see cref="ChangedAt"/> moves only when
+        /// the value differs from the stored one. The same rule the feeders apply in SQL.
+        /// </summary>
+        public static StateValue<T> Merge(StateValue<T>? stored, T value, DateTime at)
+        {
+            if (stored != null && stored.At >= at) return stored;
+            var changedAt = stored == null || !EqualityComparer<T>.Default.Equals(stored.Value, value) ? at : stored.Since;
+            return new StateValue<T>(value, at, changedAt);
+        }
+
+        /// <summary>
+        /// Like <see cref="Merge"/> but for a value the caller has just written to a column that owns it (the activity status):
+        /// it replaces the stored entry whatever its time, so the entry can never disagree with the column.
+        /// </summary>
+        public static StateValue<T> Set(StateValue<T>? stored, T value, DateTime at)
+        {
+            var changedAt = stored == null || !EqualityComparer<T>.Default.Equals(stored.Value, value) ? at : stored.Since;
+            return new StateValue<T>(value, at, changedAt);
+        }
+
         public StateValue() { }
 
         public StateValue(T value, DateTime at, DateTime? changedAt = null)
