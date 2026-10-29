@@ -1,4 +1,4 @@
-using NetTopologySuite.Geometries;
+ using NetTopologySuite.Geometries;
 
 namespace db_model.Map
 {
@@ -14,22 +14,34 @@ namespace db_model.Map
         public int? CompanyId { get; set; }
 
         public Point Location { get; set; } = default!;
-        public float? Speed { get; set; }
+
+        //public DateTime LatestLocationUpdate { get; set; }
+
+
         /// <summary>Heading in degrees, null when unknown.</summary>
         public short? Dir { get; set; }
+
+        //public short IconTypeId { get; set; }
+        //public bool IsHidden { get; set; }
+        public DateTime LatestOnMapUpdate { get; set; }
+
+        
+        // to Remove
+        
+
+        public float? Speed { get; set; }
 
         /// <summary><see cref="db_model.Map.GpsDeviceMapStatus"/> value.</summary>
         public short StatusId { get; set; }
         public DateTime StatusChangedAt { get; set; }
 
-        /// <summary>Source time of the newest position; an upsert only applies a newer one.</summary>
-        public DateTime LastPositionAt { get; set; }
         /// <summary>Source time of the newest record of any kind received from the device.</summary>
         public DateTime LastCommunicationAt { get; set; }
 
         public bool LowBattery { get; set; }
         public bool EngineFault { get; set; }
+        /// <summary>Source time of the newest position; an upsert only applies a newer one.</summary>
+        public DateTime LastPositionAt { get; set; }
 
-        public DateTime LatestOnMapUpdate { get; set; }
     }
 }
