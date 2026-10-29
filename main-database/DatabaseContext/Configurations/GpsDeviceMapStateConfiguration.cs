@@ -17,6 +17,10 @@ namespace mf.aiApi.mainDatabase.DatabaseContext.Configurations
 			// this index does not defeat HOT updates; Location/LastPositionAt/StatusId must stay unindexed.
 			entity.HasIndex(e => e.CompanyId);
 
+			// Sentinel = the default, so an explicit StatusId of 0 (Invisible) is inserted instead of being replaced by the default.
+			entity.Property(e => e.StatusId).HasDefaultValue((short)GpsDeviceMapStatus.Visible).HasSentinel((short)GpsDeviceMapStatus.Visible);
+			entity.Property(e => e.LocationAccuracyId).HasDefaultValue((short)GPSLocationAccuracy.Fine);
+
 			// Rewritten every few seconds per moving device: leave room on the page for HOT updates.
 			entity.HasStorageParameter("fillfactor", 75);
 		}

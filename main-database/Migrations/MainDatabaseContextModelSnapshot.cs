@@ -48,6 +48,91 @@ namespace main_database.Migrations
                     b.ToTable("company", (string)null);
                 });
 
+            modelBuilder.Entity("db_model.Gps.GpsAssetType", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("gps_asset_type", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Phone"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Car"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Pickup"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Truck"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Van"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Bus"
+                        },
+                        new
+                        {
+                            Id = 7,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Motorcycle"
+                        },
+                        new
+                        {
+                            Id = 8,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Trailer"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Equipment"
+                        },
+                        new
+                        {
+                            Id = 10,
+                            LatestUpdate = new DateTime(2026, 10, 29, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Name = "Other"
+                        });
+                });
+
             modelBuilder.Entity("db_model.Gps.GpsDevice", b =>
                 {
                     b.Property<int>("Id")
@@ -55,6 +140,9 @@ namespace main_database.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("AssetTypeId")
+                        .HasColumnType("integer");
 
                     b.Property<int?>("CompanyId")
                         .HasColumnType("integer");
@@ -85,6 +173,8 @@ namespace main_database.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssetTypeId");
 
                     b.HasIndex("CompanyId");
 
@@ -248,22 +338,39 @@ namespace main_database.Migrations
                     b.ToTable("gps_location_accuracy", (string)null);
                 });
 
+            modelBuilder.Entity("db_model.Map.GpsDeviceActivityStatus", b =>
+                {
+                    b.Property<byte>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("gps_device_activity_status", (string)null);
+                });
+
             modelBuilder.Entity("db_model.Map.GpsDeviceMapState", b =>
                 {
                     b.Property<int>("GpsDeviceId")
                         .HasColumnType("integer");
+
+                    b.Property<short>("ActivityStatusId")
+                        .HasColumnType("smallint");
 
                     b.Property<int?>("CompanyId")
                         .HasColumnType("integer");
 
                     b.Property<short?>("Dir")
                         .HasColumnType("smallint");
-
-                    b.Property<bool>("EngineFault")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime>("LastCommunicationAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("LastPositionAt")
                         .HasColumnType("timestamp with time zone");
@@ -275,16 +382,20 @@ namespace main_database.Migrations
                         .IsRequired()
                         .HasColumnType("geometry");
 
-                    b.Property<bool>("LowBattery")
-                        .HasColumnType("boolean");
+                    b.Property<short>("LocationAccuracyId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1);
 
                     b.Property<float?>("Speed")
                         .HasColumnType("real");
 
-                    b.Property<DateTime>("StatusChangedAt")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<short>("StatusId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)1);
+
+                    b.Property<short>("WarningFlags")
                         .HasColumnType("smallint");
 
                     b.HasKey("GpsDeviceId");
@@ -1602,6 +1713,11 @@ namespace main_database.Migrations
 
             modelBuilder.Entity("db_model.Gps.GpsDevice", b =>
                 {
+                    b.HasOne("db_model.Gps.GpsAssetType", null)
+                        .WithMany()
+                        .HasForeignKey("AssetTypeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("db_model.Gps.GpsDeviceType", null)
                         .WithMany()
                         .HasForeignKey("TypeId")

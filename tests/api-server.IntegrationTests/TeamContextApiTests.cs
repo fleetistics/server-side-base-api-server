@@ -669,10 +669,8 @@ public sealed class TeamContextApiTests : IAsyncLifetime
                 {
                     GpsDeviceId = deviceId,
                     Location = new Point(longitude, latitude),
-                    StatusId = GpsDeviceMapStatus.Parked,
-                    StatusChangedAt = latestOnMapUpdate,
+                    ActivityStatusId = GpsDeviceActivityStatus.Parked,
                     LastPositionAt = latestOnMapUpdate,
-                    LastCommunicationAt = latestOnMapUpdate,
                     LatestOnMapUpdate = latestOnMapUpdate,
                 });
             }

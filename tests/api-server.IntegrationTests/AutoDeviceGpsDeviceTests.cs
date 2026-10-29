@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using db_model.Gps;
 using db_model.UserManagement;
@@ -84,5 +84,23 @@ public sealed class AutoDeviceGpsDeviceTests : IAsyncLifetime
 
         var devices = await DevicesAsync(uid);
         devices.ShouldHaveSingleItem().Id.ShouldBe(first.Id);
+    }
+
+    [Fact]
+    public async Task AssetType_IsSeeded_AndADeviceCanCarryOne()
+    {
+        var types = await _fixture.QueryDbAsync(db => db.Set<GpsAssetType>().AsNoTracking().ToListAsync());
+        types.Select(t => t.Id).ShouldBe(new[] { GpsAssetType.Phone, GpsAssetType.Car, GpsAssetType.Pickup, GpsAssetType.Truck, GpsAssetType.Van,
+            GpsAssetType.Bus, GpsAssetType.Motorcycle, GpsAssetType.Trailer, GpsAssetType.Equipment, GpsAssetType.Other }, ignoreOrder: true);
+
+        var serial = "asset-" + Guid.NewGuid().ToString("N");
+        await _fixture.QueryDbAsync(async db =>
+        {
+            db.Add(new GpsDevice { ProviderId = GpsDeviceProvider.Mobile, StatusId = GpsDeviceStatus.Active, SerialNumber = serial, AssetTypeId = GpsAssetType.Phone });
+            await db.SaveChangesAsync();
+            return 0;
+        });
+
+        (await DevicesAsync(serial)).ShouldHaveSingleItem().AssetTypeId.ShouldBe(GpsAssetType.Phone);
     }
 }

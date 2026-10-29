@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using api_server.Controllers.MapData.Services;
@@ -14,12 +14,12 @@ namespace api_server.IntegrationTests;
 public sealed class PhoneMapStateRulesTests
 {
     [Theory]
-    [InlineData(10f, null, GpsDeviceMapStatus.Moving)]
-    [InlineData(3.1f, MobileDeviceMotionActivity.Still, GpsDeviceMapStatus.Moving)]
-    [InlineData(3f, MobileDeviceMotionActivity.InVehicle, GpsDeviceMapStatus.Idle)]
-    [InlineData(0f, MobileDeviceMotionActivity.InVehicle, GpsDeviceMapStatus.Idle)]
-    [InlineData(0f, MobileDeviceMotionActivity.Still, GpsDeviceMapStatus.Parked)]
-    [InlineData(null, null, GpsDeviceMapStatus.Parked)]
+    [InlineData(10f, null, GpsDeviceActivityStatus.Moving)]
+    [InlineData(3.1f, MobileDeviceMotionActivity.Still, GpsDeviceActivityStatus.Moving)]
+    [InlineData(3f, MobileDeviceMotionActivity.InVehicle, GpsDeviceActivityStatus.Idle)]
+    [InlineData(0f, MobileDeviceMotionActivity.InVehicle, GpsDeviceActivityStatus.Idle)]
+    [InlineData(0f, MobileDeviceMotionActivity.Still, GpsDeviceActivityStatus.Parked)]
+    [InlineData(null, null, GpsDeviceActivityStatus.Parked)]
     public void Status_comes_from_speed_then_motion_activity(float? speedKmh, short? activity, byte expected) =>
         PhoneMapState.StatusFor(speedKmh, activity).ShouldBe(expected);
 
@@ -102,7 +102,10 @@ public sealed class PhoneMapStateFlowTests : IAsyncLifetime
         state.Location.Y.ShouldBe(50.45, 1e-9);
         state.Location.X.ShouldBe(30.52, 1e-9);
         state.Speed.ShouldNotBeNull().ShouldBe(36f, 0.01f);    // km/h, as the feeders store it
-        state.StatusId.ShouldBe(GpsDeviceMapStatus.Moving);
+        state.ActivityStatusId.ShouldBe(GpsDeviceActivityStatus.Moving);
+        state.StatusId.ShouldBe(GpsDeviceMapStatus.Visible);
+        state.WarningFlags.ShouldBe(GpsDeviceWarning.None);
+        state.LocationAccuracyId.ShouldBe(GPSLocationAccuracy.Fine);
         state.CompanyId.ShouldBeNull();
         state.LastPositionAt.ShouldBe(time, TimeSpan.FromMilliseconds(1));
 
@@ -131,7 +134,7 @@ public sealed class PhoneMapStateFlowTests : IAsyncLifetime
 
         var state = await _fixture.QueryDbAsync(db => db.Set<GpsDeviceMapState>().AsNoTracking().SingleAsync(s => s.GpsDeviceId == deviceId));
         state.Location.Y.ShouldBe(50.45, 1e-9);
-        state.StatusId.ShouldBe(GpsDeviceMapStatus.Parked);
+        state.ActivityStatusId.ShouldBe(GpsDeviceActivityStatus.Parked);
         var data = await _fixture.QueryDbAsync(db => db.Set<GpsDeviceStateData>().AsNoTracking().SingleAsync(d => d.GpsDeviceId == deviceId));
         PhoneMapState.ReadValues(data.Data).BatteryLevel.ShouldBe(0.8f);
     }

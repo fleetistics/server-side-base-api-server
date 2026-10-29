@@ -169,6 +169,17 @@ not pinned down). The old `mobile_gps_device_map_state` rows were not copied (ph
 as they report) and nothing reads that table any more; the track points still go to
 `mobile_gps_device_track_point`.
 
+Map state columns (migration `20261029102453_20261029122448`): `StatusId` is visibility (0 Invisible, 1 Visible,
+default 1, more values may follow); `ActivityStatusId` is what `StatusId` used to hold (Unknown, Moving, Idle,
+Parked, Offline; table `gps_device_activity_status`, renamed from `gps_device_map_status`); `WarningFlags` is a
+`GpsDeviceWarning` bit mask (LowBattery 1, EngineFault 2, StalePosition 4); `LocationAccuracyId` is
+`GPSLocationAccuracy` (not null, default Fine). `StatusChangedAt`, `LastCommunicationAt`, `LowBattery` and
+`EngineFault` are no longer mapped; the columns stay in the table for one release (made nullable / defaulted)
+and are dropped by hand. `gps_device.AssetTypeId` points at `gps_asset_type` (what the device is on: phone, car,
+truck ...), separate from `TypeId` (the hardware). The feeders and `PhoneMapState` still need their logic moved
+to the new columns: until then they write the activity into `StatusId` and the battery/fault bits into the old
+columns.
+
 **Feeder heartbeat** — `IFeederHeartbeat.CompanyWatched(companyId)` (in `Services/Feeders`) tells
 the feeders (`server-side-feeders`) that somebody is looking at a company's map, so they poll
 its accounts every ~2 s instead of every 30 s. Call it wherever a company's live map data is

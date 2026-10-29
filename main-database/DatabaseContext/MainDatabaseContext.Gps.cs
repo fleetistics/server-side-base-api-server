@@ -34,6 +34,28 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 					new GpsDeviceType { Id = GpsDeviceType.MobileAndroid, Name = "Android", ProviderId = GpsDeviceProvider.Mobile, LatestUpdate = seeded },
 					new GpsDeviceType { Id = GpsDeviceType.MobileIos, Name = "iOS", ProviderId = GpsDeviceProvider.Mobile, LatestUpdate = seeded });
 			});
+			modelBuilder.Entity<GpsAssetType>(entity =>
+			{
+				entity.ToTable("gps_asset_type");
+				entity.HasKey(e => new { e.Id });
+				entity.Property(e => e.Id).ValueGeneratedNever();
+				entity.HasIndex(e => e.Name).IsUnique();
+				var seeded = new DateTime(2026, 10, 29, 0, 0, 0, DateTimeKind.Utc);
+				entity.HasData(
+					new GpsAssetType { Id = GpsAssetType.Phone, Name = "Phone", LatestUpdate = seeded },
+					new GpsAssetType { Id = GpsAssetType.Car, Name = "Car", LatestUpdate = seeded },
+					new GpsAssetType { Id = GpsAssetType.Pickup, Name = "Pickup", LatestUpdate = seeded },
+					new GpsAssetType { Id = GpsAssetType.Truck, Name = "Truck", LatestUpdate = seeded },
+					new GpsAssetType { Id = GpsAssetType.Van, Name = "Van", LatestUpdate = seeded },
+					new GpsAssetType { Id = GpsAssetType.Bus, Name = "Bus", LatestUpdate = seeded },
+					new GpsAssetType { Id = GpsAssetType.Motorcycle, Name = "Motorcycle", LatestUpdate = seeded },
+					new GpsAssetType { Id = GpsAssetType.Trailer, Name = "Trailer", LatestUpdate = seeded },
+					new GpsAssetType { Id = GpsAssetType.Equipment, Name = "Equipment", LatestUpdate = seeded },
+					new GpsAssetType { Id = GpsAssetType.Other, Name = "Other", LatestUpdate = seeded });
+			});
+			modelBuilder.Entity<GpsDevice>()
+				.HasOne<GpsAssetType>().WithMany().HasForeignKey(e => e.AssetTypeId).OnDelete(DeleteBehavior.Restrict);
+
 			// Not in GpsDeviceConfiguration: the feeders' context shares that one and does not map the type table.
 			modelBuilder.Entity<GpsDevice>()
 				.HasOne<GpsDeviceType>().WithMany().HasForeignKey(e => e.TypeId).OnDelete(DeleteBehavior.Restrict);

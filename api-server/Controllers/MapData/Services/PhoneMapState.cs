@@ -34,9 +34,9 @@ namespace api_server.Controllers.MapData.Services
 		/// </summary>
 		public static byte StatusFor(float? speedKmh, short? motionActivity)
 		{
-			if (speedKmh is > MovingAboveKmh) return GpsDeviceMapStatus.Moving;
-			if (motionActivity == MobileDeviceMotionActivity.InVehicle) return GpsDeviceMapStatus.Idle;
-			return GpsDeviceMapStatus.Parked;
+			if (speedKmh is > MovingAboveKmh) return GpsDeviceActivityStatus.Moving;
+			if (motionActivity == MobileDeviceMotionActivity.InVehicle) return GpsDeviceActivityStatus.Idle;
+			return GpsDeviceActivityStatus.Parked;
 		}
 
 		/// <summary>
@@ -57,22 +57,19 @@ namespace api_server.Controllers.MapData.Services
 
 			var speedKmh = fix.SpeedMs * KmhPerMs;
 			var status = StatusFor(speedKmh, fix.MotionActivity);
-			var isNew = state == null;
 			if (state == null)
 			{
 				state = new GpsDeviceMapState { GpsDeviceId = deviceId };
 				repository.Create(state);
 			}
-			if (isNew || state.StatusId != status) state.StatusChangedAt = fix.PositionAt;
 
 			state.CompanyId = companyId;
 			state.Location = fix.Location;
 			state.Speed = speedKmh;
 			state.Dir = fix.Dir;
-			state.StatusId = status;
+			state.ActivityStatusId = status;
 			state.LastPositionAt = fix.PositionAt;
-			state.LastCommunicationAt = fix.PositionAt;
-			// LowBattery is left alone: the phones' battery scale is not pinned down yet, the level itself goes to the data row.
+			// WarningFlags.LowBattery is left alone: the phones' battery scale is not pinned down yet, the level itself goes to the data row.
 			state.LatestOnMapUpdate = fix.ReceivedAt;
 
 			var data = await repository.GetByIdAsync<GpsDeviceStateData>(deviceId, cancellationToken);

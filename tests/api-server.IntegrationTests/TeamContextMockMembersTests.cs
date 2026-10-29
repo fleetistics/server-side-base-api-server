@@ -231,10 +231,8 @@ public sealed class TeamContextMockMembersTests
         {
             GpsDeviceId = deviceId,
             Location = new Point(longitude, latitude),
-            StatusId = GpsDeviceMapStatus.Parked,
-            StatusChangedAt = now,
+            ActivityStatusId = GpsDeviceActivityStatus.Parked,
             LastPositionAt = now,
-            LastCommunicationAt = now,
             LatestOnMapUpdate = now,
         });
         await db.SaveChangesAsync();

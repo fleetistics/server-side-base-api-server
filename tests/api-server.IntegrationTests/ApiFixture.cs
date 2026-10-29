@@ -187,7 +187,7 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
                 DbAdapter = DbAdapter.Postgres,
                 // Model-seeded (HasData) rows that code and foreign keys depend on: wiping them would break every
                 // test that creates a device with a TypeId.
-                TablesToIgnore = [new Respawn.Graph.Table("gps_device_type")],
+                TablesToIgnore = [new Respawn.Graph.Table("gps_device_type"), new Respawn.Graph.Table("gps_asset_type")],
             });
         }
 

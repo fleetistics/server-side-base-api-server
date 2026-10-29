@@ -18,17 +18,16 @@ namespace db_model.Map
         /// <summary>Heading in degrees, null when unknown.</summary>
         public short? Dir { get; set; }
 
-        /// <summary><see cref="db_model.Map.GpsDeviceMapStatus"/> value.</summary>
-        public short StatusId { get; set; }
-        public DateTime StatusChangedAt { get; set; }
+        /// <summary><see cref="db_model.Map.GpsDeviceMapStatus"/> value: whether the map shows the device.</summary>
+        public short StatusId { get; set; } = GpsDeviceMapStatus.Visible;
+        /// <summary><see cref="db_model.Map.GpsDeviceActivityStatus"/> value: moving, idle, parked ...</summary>
+        public short ActivityStatusId { get; set; }
+        public GpsDeviceWarning WarningFlags { get; set; }
+        /// <summary><see cref="db_model.Map.GPSLocationAccuracy"/> value of the newest position.</summary>
+        public short LocationAccuracyId { get; set; } = GPSLocationAccuracy.Fine;
 
         /// <summary>Source time of the newest position; an upsert only applies a newer one.</summary>
         public DateTime LastPositionAt { get; set; }
-        /// <summary>Source time of the newest record of any kind received from the device.</summary>
-        public DateTime LastCommunicationAt { get; set; }
-
-        public bool LowBattery { get; set; }
-        public bool EngineFault { get; set; }
 
         public DateTime LatestOnMapUpdate { get; set; }
     }

@@ -12,6 +12,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 		{
 			modelBuilder.ApplyConfiguration(new CompanyConfiguration());
 			modelBuilder.ApplyConfiguration(new GpsDeviceMapStatusConfiguration());
+			modelBuilder.ApplyConfiguration(new GpsDeviceActivityStatusConfiguration());
 			modelBuilder.ApplyConfiguration(new GpsDeviceMapStateConfiguration());
 			modelBuilder.ApplyConfiguration(new GpsDeviceStateDataConfiguration());
 		}
