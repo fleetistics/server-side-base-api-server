@@ -16,6 +16,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			modelBuilder.ApplyConfiguration(new GpsDeviceMapStateConfiguration());
 			modelBuilder.ApplyConfiguration(new GpsDeviceStateDataConfiguration());
 			modelBuilder.ApplyConfiguration(new GpsDeviceHourlyTotalConfiguration());
+			modelBuilder.ApplyConfiguration(new GpsDeviceLocationPrivacyConfiguration());
 		}
 	}
 }

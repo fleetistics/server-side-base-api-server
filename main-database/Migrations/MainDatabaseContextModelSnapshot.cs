@@ -187,6 +187,25 @@ namespace main_database.Migrations
                     b.ToTable("gps_device", (string)null);
                 });
 
+            modelBuilder.Entity("db_model.Gps.GpsDeviceLocationPrivacy", b =>
+                {
+                    b.Property<int>("GpsDeviceId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short>("PrivacyMode")
+                        .HasColumnType("smallint");
+
+                    b.HasKey("GpsDeviceId");
+
+                    b.ToTable("gps_device_location_privacy", (string)null);
+                });
+
             modelBuilder.Entity("db_model.Gps.GpsDeviceProvider", b =>
                 {
                     b.Property<short>("Id")
@@ -1761,6 +1780,15 @@ namespace main_database.Migrations
                         .WithMany()
                         .HasForeignKey("TypeId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("db_model.Gps.GpsDeviceLocationPrivacy", b =>
+                {
+                    b.HasOne("db_model.Gps.GpsDevice", null)
+                        .WithOne()
+                        .HasForeignKey("db_model.Gps.GpsDeviceLocationPrivacy", "GpsDeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("db_model.Gps.GpsDeviceType", b =>
