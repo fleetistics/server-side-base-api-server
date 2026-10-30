@@ -41,6 +41,18 @@ public sealed class DeviceStateDataTests
             Activity = new StateValue<short>(3, T1),
             ActivityStatus = new StateValue<short>(GpsDeviceActivityStatus.Parked, T1, T0),
             Communication = new StateValue<bool>(true, T1, T0),
+            PrivateMode = new StateValue<bool>(true, T1, T0),
+            EngineFault = new StateValue<bool>(true, T1, T0),
+            BatteryLow = new StateValue<bool>(true, T1, T0),
+            BatteryFault = new StateValue<bool>(false, T1, T0),
+            Odometer = new StateValue<double>(123456789, T1, T0),
+            EngineHours = new StateValue<double>(7200, T1),
+            FuelTotal = new StateValue<double>(5500.5, T1),
+            FuelIdleTotal = new StateValue<double>(310.25, T1),
+            SeatBelt = new StateValue<double>(1, T1, T0),
+            OdometerAdjustment = new StateValue<double>(-1500, T1),
+            EngineHoursAdjustment = new StateValue<double>(3600, T1),
+            FuelLevel = new StateValue<double>(24.31, T1, T0),
         };
 
         var back = DeviceStateData.Parse(data.ToJson());
@@ -57,7 +69,37 @@ public sealed class DeviceStateDataTests
         back.ActivityStatus!.Value.ShouldBe((short)GpsDeviceActivityStatus.Parked);
         back.ActivityStatus.Since.ShouldBe(T0);
         back.Communication!.Value.ShouldBeTrue();
+        back.PrivateMode!.Value.ShouldBeTrue();
+        back.PrivateMode.Since.ShouldBe(T0);
+        back.EngineFault!.Value.ShouldBeTrue();
+        back.EngineFault.Since.ShouldBe(T0);
+        back.BatteryLow!.Value.ShouldBeTrue();
+        back.BatteryFault!.Value.ShouldBeFalse();
+        back.BatteryFault.Since.ShouldBe(T0);
+        back.Odometer!.Value.ShouldBe(123456789);
+        back.Odometer.Since.ShouldBe(T0);
+        back.EngineHours!.Value.ShouldBe(7200);
+        back.FuelTotal!.Value.ShouldBe(5500.5);
+        back.FuelIdleTotal!.Value.ShouldBe(310.25);
+        back.SeatBelt!.Value.ShouldBe(1);
+        back.OdometerAdjustment!.Value.ShouldBe(-1500);
+        back.EngineHoursAdjustment!.Value.ShouldBe(3600);
+        back.FuelLevel!.Value.ShouldBe(24.31);
+        back.FuelLevel.Since.ShouldBe(T0);
         back.Extra.ShouldBeNull();
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(-1.0, null)]   // the provider says unavailable
+    [InlineData(0.0, false)]   // buckled
+    [InlineData(1.0, true)]    // unbuckled
+    [InlineData(2.0, true)]
+    public void SeatBelt_IsUnbuckledOnlyAboveZero_AndUnknownWhenMissingOrUnavailable(double? value, bool? expected)
+    {
+        var data = new DeviceStateData { SeatBelt = value == null ? null : new StateValue<double>(value.Value, T1) };
+
+        data.IsSeatBeltUnbuckled.ShouldBe(expected);
     }
 
     [Fact]

@@ -173,9 +173,22 @@ Map state columns (migration `20261029102453_20261029122448`): `StatusId` is vis
 default 1, more values may follow); `ActivityStatusId` is what `StatusId` used to hold (Unknown, Moving, Idle,
 Parked, StalePosition; table `gps_device_activity_status`, renamed from `gps_device_map_status`, row 4 was
 "Offline": `UPDATE gps_device_activity_status SET "Name" = 'StalePosition' WHERE "Id" = 4;`); `WarningFlags` is a
-`GpsDeviceWarning` bit mask (LowBattery 1, EngineFault 2; bit 4 is no longer used: StalePosition is an activity
-status now, set by the feeders' sweep when a device sends no position for the configured time); `LocationAccuracyId` is
-`GPSLocationAccuracy` (not null, default Fine). `StatusChangedAt`, `LastCommunicationAt`, `LowBattery` and
+`GpsDeviceWarning` bit mask (LowBattery 1, EngineFault 2, StalePosition 4: the feeders' sweep sets bit 4 together with the
+activity status StalePosition when a device sends no position for the configured time, and any position clears both); `LocationAccuracyId` is
+`GPSLocationAccuracy` (not null, default Fine). The feeders hide a Geotab vehicle that is in private mode by setting
+`StatusId` to 0 (dated parameter `privateMode`); readers of the map state must show only `StatusId` = 1. The `EngineFault`
+bit of `WarningFlags` is set from Geotab's fault feed (dated parameter `engineFault`) and ends a day after the last fault record.
+The `LowBattery` bit is on while the voltage reading is low (`batteryLow`) or Geotab's battery-low fault is active (`batteryFault`).
+**Fuel economy.** `gps_device_hourly_total` holds, per device and UTC hour, the last reading of the odometer (metres), engine hours (seconds), fuel
+total and idle fuel total (litres), each with its own time; the feeders write it, the API never does. `IFuelEconomyService`
+(`Controllers/Fleet/Services`) turns it into distance, engine time, fuel, idle fuel, litres per 100 km and idle share for a list of devices and a
+period of whole hours: the value in force at the start is the last reading before it (looked for `FuelEconomy:BaselineLookbackDays` = 7 days back), a
+device whose first reading comes inside the period counts from that reading and is marked `Partial`, a counter that goes down (a replaced device) is
+a reset that is skipped and counted, and under one kilometre there is no litres-per-100-km. Limits: `FuelEconomy:MaxPeriodDays` = 366. **There is
+no HTTP endpoint yet**: the API has no company or fleet authorisation for vehicles to attach it to.
+The data object also carries `odometer` and `engineHours` (as the vehicle reports them: Geotab metres and seconds, not converted), their
+user corrections `odometerAdjustment` and `engineHoursAdjustment` (not applied), `fuelTotal` and `fuelIdleTotal` (cumulative litres), `fuelLevel` (percent) and
+`seatBelt` (above 0 unbuckled, 0 buckled, below 0 unavailable; `DeviceStateData.IsSeatBeltUnbuckled`). `StatusChangedAt`, `LastCommunicationAt`, `LowBattery` and
 `EngineFault` are no longer mapped; the columns stay in the table for one release (made nullable / defaulted)
 and are dropped by hand. `gps_device.AssetTypeId` points at `gps_asset_type` (what the device is on: phone, car,
 truck ...), separate from `TypeId` (the hardware). The feeders and `PhoneMapState` write the new columns; the

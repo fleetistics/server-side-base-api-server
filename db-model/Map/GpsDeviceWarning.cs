@@ -7,7 +7,10 @@ namespace db_model.Map
         None = 0,
         LowBattery = 1,
         EngineFault = 2,
-        /// <summary>Not used: a position that is too old is the activity status <see cref="GpsDeviceActivityStatus.StalePosition"/>, set by the feeders' sweep.</summary>
+        /// <summary>
+        /// The device sent no position for the configured time. Set together with the activity status
+        /// <see cref="GpsDeviceActivityStatus.StalePosition"/> by the feeders' sweep, and cleared by the next position.
+        /// </summary>
         StalePosition = 4,
     }
 }

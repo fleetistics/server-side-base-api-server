@@ -358,6 +358,45 @@ namespace main_database.Migrations
                     b.ToTable("gps_device_activity_status", (string)null);
                 });
 
+            modelBuilder.Entity("db_model.Map.GpsDeviceHourlyTotal", b =>
+                {
+                    b.Property<int>("GpsDeviceId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("HourUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double?>("EngineHours")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime?>("EngineHoursAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double?>("FuelIdleTotal")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime?>("FuelIdleTotalAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double?>("FuelTotal")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime?>("FuelTotalAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<double?>("Odometer")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime?>("OdometerAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("GpsDeviceId", "HourUtc");
+
+                    b.HasIndex("HourUtc");
+
+                    b.ToTable("gps_device_hourly_total", (string)null);
+                });
+
             modelBuilder.Entity("db_model.Map.GpsDeviceMapState", b =>
                 {
                     b.Property<int>("GpsDeviceId")
@@ -1730,6 +1769,15 @@ namespace main_database.Migrations
                         .WithMany()
                         .HasForeignKey("ParentId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("db_model.Map.GpsDeviceHourlyTotal", b =>
+                {
+                    b.HasOne("db_model.Gps.GpsDevice", null)
+                        .WithMany()
+                        .HasForeignKey("GpsDeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("db_model.Messages.TeamActivity2User", b =>

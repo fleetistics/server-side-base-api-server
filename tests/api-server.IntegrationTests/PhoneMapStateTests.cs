@@ -136,6 +136,7 @@ public sealed class PhoneMapStateFlowTests : IAsyncLifetime
         {
             var state = await db.Set<GpsDeviceMapState>().SingleAsync(s => s.GpsDeviceId == deviceId);
             state.ActivityStatusId = GpsDeviceActivityStatus.StalePosition;
+            state.WarningFlags = GpsDeviceWarning.StalePosition | GpsDeviceWarning.LowBattery;
             var data = await db.Set<GpsDeviceStateData>().SingleAsync(d => d.GpsDeviceId == deviceId);
             var parameters = DeviceStateData.Parse(data.Data);
             parameters.ActivityStatus = new StateValue<short>(GpsDeviceActivityStatus.StalePosition, swept, swept);
@@ -153,6 +154,7 @@ public sealed class PhoneMapStateFlowTests : IAsyncLifetime
 
         var state = await _fixture.QueryDbAsync(db => db.Set<GpsDeviceMapState>().AsNoTracking().SingleAsync(s => s.GpsDeviceId == deviceId));
         state.ActivityStatusId.ShouldBe(GpsDeviceActivityStatus.Idle); // in a vehicle, not moving
+        state.WarningFlags.ShouldBe(GpsDeviceWarning.LowBattery); // the fix ended StalePosition and left the other warning alone
         var data = await _fixture.QueryDbAsync(db => db.Set<GpsDeviceStateData>().AsNoTracking().SingleAsync(d => d.GpsDeviceId == deviceId));
         var status = DeviceStateData.Parse(data.Data).ActivityStatus!;
         status.Value.ShouldBe((short)GpsDeviceActivityStatus.Idle); // the entry follows the column even though the sweep's date was newer

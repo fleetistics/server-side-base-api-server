@@ -68,6 +68,7 @@ namespace api_server.Controllers.MapData.Services
 			state.Dir = fix.Dir;
 			state.ActivityStatusId = status;
 			state.LocationAccuracyId = fix.LocationAccuracyId;
+			state.WarningFlags &= ~GpsDeviceWarning.StalePosition; // a fix ends StalePosition: the status above, and the flag here
 			state.LastPositionAt = fix.PositionAt;
 			// WarningFlags.LowBattery is left alone: the phones' battery scale is not pinned down yet, the level itself goes to the data row.
 			state.LatestOnMapUpdate = fix.ReceivedAt;
