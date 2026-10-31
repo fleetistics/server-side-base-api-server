@@ -14,6 +14,18 @@ namespace db_model.Map
         public const string Activity = "activity";
         public const string ActivityStatus = "activityStatus";
         public const string Communication = "communication";
+        public const string PrivateMode = "privateMode";
+        public const string EngineFault = "engineFault";
+        public const string BatteryLow = "batteryLow";
+        public const string BatteryFault = "batteryFault";
+        public const string Odometer = "odometer";
+        public const string EngineHours = "engineHours";
+        public const string OdometerAdjustment = "odometerAdjustment";
+        public const string EngineHoursAdjustment = "engineHoursAdjustment";
+        public const string FuelLevel = "fuelLevel";
+        public const string FuelTotal = "fuelTotal";
+        public const string FuelIdleTotal = "fuelIdleTotal";
+        public const string SeatBelt = "seatBelt";
     }
 
     /// <summary>
@@ -58,12 +70,73 @@ namespace db_model.Map
         [JsonPropertyName(StateKeys.Communication)]
         public StateValue<bool>? Communication { get; set; }
 
+        /// <summary>
+        /// The device is in the provider's private (personal) mode: <see cref="StateValue{T}.ChangedAt"/> is since when. While it is
+        /// true the map state is invisible (<see cref="GpsDeviceMapState.StatusId"/>).
+        /// </summary>
+        [JsonPropertyName(StateKeys.PrivateMode)]
+        public StateValue<bool>? PrivateMode { get; set; }
+
+        /// <summary>
+        /// An engine warning light is on: <see cref="StateValue{T}.At"/> is the newest active fault record and
+        /// <see cref="StateValue{T}.ChangedAt"/> since when. The map state's EngineFault warning follows it.
+        /// </summary>
+        [JsonPropertyName(StateKeys.EngineFault)]
+        public StateValue<bool>? EngineFault { get; set; }
+
+        /// <summary>The voltage reading says the battery is low (below the configured threshold). The LowBattery warning is this OR <see cref="BatteryFault"/>.</summary>
+        [JsonPropertyName(StateKeys.BatteryLow)]
+        public StateValue<bool>? BatteryLow { get; set; }
+
+        /// <summary>The provider's own "battery has low voltage" fault is active (set by an Active record, ended by an Inactive or Cleared one).</summary>
+        [JsonPropertyName(StateKeys.BatteryFault)]
+        public StateValue<bool>? BatteryFault { get; set; }
+
+        /// <summary>Odometer as the vehicle reports it (Geotab: <c>DiagnosticOdometerId</c>, metres on the checked account); the unit is the provider's, not converted here. See <see cref="OdometerAdjustment"/>.</summary>
+        [JsonPropertyName(StateKeys.Odometer)]
+        public StateValue<double>? Odometer { get; set; }
+
+        /// <summary>Engine hours as the vehicle reports them (Geotab: <c>DiagnosticEngineHoursId</c>, seconds); the unit is the provider's, not converted here. Many vehicles report none. See <see cref="EngineHoursAdjustment"/>.</summary>
+        [JsonPropertyName(StateKeys.EngineHours)]
+        public StateValue<double>? EngineHours { get; set; }
+
+        /// <summary>
+        /// A user's correction of the odometer (Geotab: <c>DiagnosticOdometerAdjustmentId</c>, metres). It exists only where someone adjusted the odometer: on the checked
+        /// account there were none. How it combines with <see cref="Odometer"/> is the provider's rule and is not applied here.
+        /// </summary>
+        [JsonPropertyName(StateKeys.OdometerAdjustment)]
+        public StateValue<double>? OdometerAdjustment { get; set; }
+
+        /// <summary>A user's correction of the engine hours (Geotab: <c>DiagnosticEngineHoursAdjustmentId</c>, seconds); not applied to <see cref="EngineHours"/> here.</summary>
+        [JsonPropertyName(StateKeys.EngineHoursAdjustment)]
+        public StateValue<double>? EngineHoursAdjustment { get; set; }
+
+        /// <summary>Fuel level in percent of the tank (Geotab: <c>DiagnosticFuelLevelId</c>).</summary>
+        [JsonPropertyName(StateKeys.FuelLevel)]
+        public StateValue<double>? FuelLevel { get; set; }
+
+        /// <summary>Cumulative fuel used by the device in its lifetime (Geotab: <c>DiagnosticDeviceTotalFuelId</c>). Fuel used between two times is the difference of two readings.</summary>
+        [JsonPropertyName(StateKeys.FuelTotal)]
+        public StateValue<double>? FuelTotal { get; set; }
+
+        /// <summary>Cumulative fuel used while idling (Geotab: <c>DiagnosticDeviceTotalIdleFuelId</c>).</summary>
+        [JsonPropertyName(StateKeys.FuelIdleTotal)]
+        public StateValue<double>? FuelIdleTotal { get; set; }
+
+        /// <summary>Driver seat belt as the provider reports it: above 0 is unbuckled, 0 buckled, below 0 unavailable (Geotab: <c>DiagnosticDriverSeatbeltId</c>). See <see cref="IsSeatBeltUnbuckled"/>.</summary>
+        [JsonPropertyName(StateKeys.SeatBelt)]
+        public StateValue<double>? SeatBelt { get; set; }
+
         /// <summary>Parameters this version does not know, kept verbatim.</summary>
         [JsonIgnore]
         public Dictionary<string, JsonNode?>? Extra { get; set; }
 
         [JsonIgnore]
         public bool? IsIgnitionOn => Ignition == null ? null : Ignition.Value > 0.5;
+
+        /// <summary>True when the driver's seat belt is unbuckled, false when buckled, null when it is unknown (never reported, or the provider says unavailable).</summary>
+        [JsonIgnore]
+        public bool? IsSeatBeltUnbuckled => SeatBelt == null || SeatBelt.Value < 0 ? null : SeatBelt.Value > 0;
 
         private static readonly JsonSerializerOptions Options = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 
@@ -116,6 +189,18 @@ namespace db_model.Map
                 case StateKeys.Activity: return tryRead<short>(node, v => data.Activity = v);
                 case StateKeys.ActivityStatus: return tryRead<short>(node, v => data.ActivityStatus = v);
                 case StateKeys.Communication: return tryRead<bool>(node, v => data.Communication = v);
+                case StateKeys.PrivateMode: return tryRead<bool>(node, v => data.PrivateMode = v);
+                case StateKeys.EngineFault: return tryRead<bool>(node, v => data.EngineFault = v);
+                case StateKeys.BatteryLow: return tryRead<bool>(node, v => data.BatteryLow = v);
+                case StateKeys.BatteryFault: return tryRead<bool>(node, v => data.BatteryFault = v);
+                case StateKeys.Odometer: return tryRead<double>(node, v => data.Odometer = v);
+                case StateKeys.EngineHours: return tryRead<double>(node, v => data.EngineHours = v);
+                case StateKeys.OdometerAdjustment: return tryRead<double>(node, v => data.OdometerAdjustment = v);
+                case StateKeys.EngineHoursAdjustment: return tryRead<double>(node, v => data.EngineHoursAdjustment = v);
+                case StateKeys.FuelLevel: return tryRead<double>(node, v => data.FuelLevel = v);
+                case StateKeys.FuelTotal: return tryRead<double>(node, v => data.FuelTotal = v);
+                case StateKeys.FuelIdleTotal: return tryRead<double>(node, v => data.FuelIdleTotal = v);
+                case StateKeys.SeatBelt: return tryRead<double>(node, v => data.SeatBelt = v);
                 default: return false;
             }
         }

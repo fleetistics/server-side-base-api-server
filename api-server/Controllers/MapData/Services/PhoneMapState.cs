@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text.Json.Nodes;
 using db_model.Map;
 using exs.Database.Commons.Interfaces;
 using NetTopologySuite.Geometries;
@@ -9,7 +7,8 @@ namespace api_server.Controllers.MapData.Services
 	/// <summary>The newest fix of a phone, as the map state needs it. Speed is in m/s, as the phone reports it.</summary>
 	public sealed record PhoneFix(
 		Point Location, float? SpeedMs, short? Dir, short? MotionActivity,
-		float? BatteryLevel, bool? BatteryIsCharging, DateTime PositionAt, DateTime ReceivedAt);
+		float? BatteryLevel, bool? BatteryIsCharging, DateTime PositionAt, DateTime ReceivedAt,
+		short LocationAccuracyId = GPSLocationAccuracy.Fine);
 
 	/// <summary>
 	/// Writes a phone's current state into <see cref="GpsDeviceMapState"/> / <see cref="GpsDeviceStateData"/>, the same
@@ -24,9 +23,9 @@ namespace api_server.Controllers.MapData.Services
 		/// <summary>A phone clock further ahead than this is not trusted (see <see cref="TrustedPositionAt"/>).</summary>
 		public static readonly TimeSpan ClockSkewTolerance = TimeSpan.FromMinutes(5);
 
-		public const string BatteryKey = "battery";
-		public const string ChargingKey = "charging";
-		public const string ActivityKey = "activity";
+		public const string BatteryKey = StateKeys.Battery;
+		public const string ChargingKey = StateKeys.Charging;
+		public const string ActivityKey = StateKeys.Activity;
 
 		/// <summary>
 		/// Moving above the speed threshold; otherwise Idle while the phone is in a vehicle (engine-on stop),
@@ -48,7 +47,7 @@ namespace api_server.Controllers.MapData.Services
 
 		/// <summary>
 		/// Applies the fix unless the stored position is as new or newer (a late batch must not move the phone back).
-		/// Returns whether anything was written.
+		/// A fix also ends StalePosition: the status is recomputed from the fix. Returns whether anything was written.
 		/// </summary>
 		public static async Task<bool> ApplyAsync(IRepository repository, int deviceId, int? companyId, PhoneFix fix, CancellationToken cancellationToken)
 		{
@@ -68,46 +67,36 @@ namespace api_server.Controllers.MapData.Services
 			state.Speed = speedKmh;
 			state.Dir = fix.Dir;
 			state.ActivityStatusId = status;
+			state.LocationAccuracyId = fix.LocationAccuracyId;
+			state.WarningFlags &= ~GpsDeviceWarning.StalePosition; // a fix ends StalePosition: the status above, and the flag here
 			state.LastPositionAt = fix.PositionAt;
 			// WarningFlags.LowBattery is left alone: the phones' battery scale is not pinned down yet, the level itself goes to the data row.
 			state.LatestOnMapUpdate = fix.ReceivedAt;
 
+			// The dated parameters. The activity status follows the column just written (forced); the rest only move forward in time.
 			var data = await repository.GetByIdAsync<GpsDeviceStateData>(deviceId, cancellationToken);
-			if (data == null && (fix.BatteryLevel != null || fix.BatteryIsCharging != null || fix.MotionActivity != null))
+			if (data == null)
 			{
 				data = new GpsDeviceStateData { GpsDeviceId = deviceId };
 				repository.Create(data);
 			}
-			if (data != null)
-			{
-				var json = parseObject(data.Data);
-				var t = fix.PositionAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
-				if (fix.BatteryLevel != null) json[BatteryKey] = entry(JsonValue.Create(fix.BatteryLevel.Value), t);
-				if (fix.BatteryIsCharging != null) json[ChargingKey] = entry(JsonValue.Create(fix.BatteryIsCharging.Value), t);
-				if (fix.MotionActivity != null) json[ActivityKey] = entry(JsonValue.Create(fix.MotionActivity.Value), t);
-				data.Data = json.ToJsonString();
-				data.LatestOnMapUpdate = fix.ReceivedAt;
-			}
+			var parameters = DeviceStateData.Parse(data.Data);
+			var at = fix.PositionAt;
+			parameters.ActivityStatus = StateValue<short>.Set(parameters.ActivityStatus, status, at);
+			parameters.Communication = StateValue<bool>.Merge(parameters.Communication, true, at);
+			if (fix.BatteryLevel != null) parameters.Battery = StateValue<float>.Merge(parameters.Battery, fix.BatteryLevel.Value, at);
+			if (fix.BatteryIsCharging != null) parameters.Charging = StateValue<bool>.Merge(parameters.Charging, fix.BatteryIsCharging.Value, at);
+			if (fix.MotionActivity != null) parameters.Activity = StateValue<short>.Merge(parameters.Activity, fix.MotionActivity.Value, at);
+			data.Data = parameters.ToJson();
+			data.LatestOnMapUpdate = fix.ReceivedAt;
 			return true;
 		}
 
 		/// <summary>The phone values kept in the state data: motion activity and battery level (null when absent).</summary>
 		public static (short? MotionActivity, float? BatteryLevel) ReadValues(string? stateData)
 		{
-			if (string.IsNullOrWhiteSpace(stateData)) return (null, null);
-			var json = parseObject(stateData);
-			return (valueOf(json, ActivityKey)?.GetValue<short>(), valueOf(json, BatteryKey)?.GetValue<float>());
-		}
-
-		private static JsonNode? valueOf(JsonObject json, string key) =>
-			json[key] is JsonObject o && o["v"] is JsonValue v ? v : null;
-
-		private static JsonObject entry(JsonNode value, string time) => new() { ["v"] = value, ["t"] = time };
-
-		private static JsonObject parseObject(string? text)
-		{
-			try { return JsonNode.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text) as JsonObject ?? new JsonObject(); }
-			catch (System.Text.Json.JsonException) { return new JsonObject(); }
+			var parameters = DeviceStateData.Parse(stateData);
+			return (parameters.Activity?.Value, parameters.Battery?.Value);
 		}
 	}
 }

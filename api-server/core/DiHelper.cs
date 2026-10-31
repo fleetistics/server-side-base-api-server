@@ -30,6 +30,8 @@ namespace api_server.core
 				.Configure<MediaSettings>(configuration.GetSection("Media"))
 				.Configure<ClientLogRetentionOptions>(configuration.GetSection("ClientLog"))
 				.Configure<AuthOptions>(configuration.GetSection("Auth"))
+				.Configure<api_server.Controllers.Fleet.Services.FuelEconomyOptions>(configuration.GetSection("FuelEconomy"))
+				.AddScoped<api_server.Controllers.Fleet.Services.IFuelEconomyService, api_server.Controllers.Fleet.Services.FuelEconomyService>()
 				.AddSingleton<PasswordHasher>()
 				.AddSingleton(TimeProvider.System)
 				.AddSingleton<LoginThrottle>()
