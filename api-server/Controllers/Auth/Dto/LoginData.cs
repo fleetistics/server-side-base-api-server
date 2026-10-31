@@ -10,5 +10,7 @@ namespace api_server.Auth.Dto
         [Required]
         public string Password { get; set; } = string.Empty;
         public bool? RememberMe { get; set; }
+
+        public ClientSideInfo? ClientSideInfo { get; set; }
     }
 }

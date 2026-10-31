@@ -11,7 +11,8 @@ namespace api_server.Users
 		public UserDto(User user)
 		{
 			Id = user.Id;
-			DisplayName = user.DisplayName;
+            CompanyId = user.CompanyId;
+            DisplayName = user.DisplayName;
 			UserName = user.UserName;
 			//StatusId = user.StatusId;
 			FullName = user.FullName;
@@ -28,7 +29,8 @@ namespace api_server.Users
 		}
 
 		public int Id { get; set; }
-		public string DisplayName { get; set; } = default!;
+        public int? CompanyId { get; set; }
+        public string DisplayName { get; set; } = default!;
 		public string UserName { get; set; } = default!;
 		//public short StatusId { get; set; }
 		public string? FullName { get; set; } = default!;

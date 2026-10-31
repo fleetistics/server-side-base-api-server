@@ -24,13 +24,13 @@ namespace api_server.Controllers.Base
 			}
 		}
 
-		// Active team as of the last token renewal; null when the user had none
+		// Active company as of the last token renewal; null when the user had none
 		// (the claim is omitted from the token in that case).
-		protected int? TeamId
+		protected int? CompanyId
 		{
 			get
 			{
-				var value = User.FindFirst(TokenService.TeamIdClaim)?.Value;
+				var value = User.FindFirst(TokenService.CompanyIdClaim)?.Value;
 				return value is null ? null : int.Parse(value);
 			}
 		}

@@ -42,7 +42,7 @@ public sealed class RegistrationTests : IAsyncLifetime
         Regex.IsMatch(user.UserName, PendingPattern("new.person")).ShouldBeTrue(user.UserName);
         user.Email.ShouldBe("new.person@example.test"); // only the unique field is prefixed
         user.StatusId.ShouldBe(UserStatus.JustCreated);
-        user.UserSourceId.ShouldBe(UserSource.Registered);
+        user.UserSourceId.ShouldBe(UserSource.Registration_Portal);
         user.Password.ShouldBeNull();
         user.DisplayName.ShouldBe("New Person");
         user.FullName.ShouldBe("Newly Registered Person");

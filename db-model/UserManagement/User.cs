@@ -8,7 +8,8 @@ namespace db_model.UserManagement
     public class User
     {
         public int Id { get; set; }
-        
+        public int? CompanyId { get; set; }
+
         public string UserName { get; set; } = default!;
         public string DisplayName { get; set; } = default!;
         public string FullName { get; set; } = default!;

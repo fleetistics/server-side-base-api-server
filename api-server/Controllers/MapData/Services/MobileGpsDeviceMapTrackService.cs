@@ -1,11 +1,13 @@
+﻿using api_server.Controllers.MapData.Dto;
 using db_model.Gps;
 using db_model.Map;
+using db_model.Team;
 using db_model.UserManagement;
 using exs.Commons.Utils;
 using exs.Database.Commons.Interfaces;
 using NetTopologySuite;
 using NetTopologySuite.Geometries;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Threading.Channels;
 
 namespace api_server.Controllers.MapData.Services
@@ -30,8 +32,9 @@ namespace api_server.Controllers.MapData.Services
 			public CommandType Type { get; set; }
             public int UserId { get; set; }
 			public int MobileGpsDeviceId { get; set; }
-			public int? TeamId { get; set; }
-			public List<MobileGpsDeviceTrackPoint> TrackPoints { get; set; } = default!;
+			public int? CompanyId { get; set; }
+			public DateTime ReceivedAt { get; set; }
+            public List<MobileLocation> TrackPoints { get; set; } = default!;
 		}
 
 		public MobileGpsDeviceMapTrackService(IServiceScopeFactory scopeFactory, ILogger<MobileGpsDeviceMapTrackService> logger)
@@ -40,153 +43,83 @@ namespace api_server.Controllers.MapData.Services
 			mLogger = logger;
 		}
 
-		public async Task ParseAndUpdateDeviceLocationsAsync(int userId, int? teamId, int mobileGpsDeviceId, JsonArray jLocations, CancellationToken cancellationToken)
+		/// <summary>
+		/// Turns a parsed location report into track points item by item: an unusable item is logged and skipped,
+		/// the rest of the batch is still processed.
+		/// </summary>
+		public async Task ParseAndUpdateDeviceLocationsAsync(int userId, int? companyId, int mobileGpsDeviceId, List<MobileLocation?> locations, CancellationToken cancellationToken)
 		{
-			var points = new List<MobileGpsDeviceTrackPoint>(jLocations.Count);
-			var now = DateTime.UtcNow;
-			foreach (var jItem in jLocations)
+			if (locations.Count > 0)
 			{
-				try
-				{
-					if (jItem is JsonArray jArray)
-					{
-						// [0]=lat, [1]=lon, [2]=accuracy(m), [3]=speed, [4]=heading, [5]=activity, [6]=timestamp, [7]=altitude, [8]=battery level, [9]=battery charging
-						if (jArray.Count < 7) continue;
-						var latitude = jArray[0]?.GetValue<double?>();
-						var longitude = jArray[1]?.GetValue<double?>();
-						if (latitude == null || longitude == null) continue;
-						var jDt = jArray[6]?.AsValue();
-						if (jDt == null) continue;
-						DateTime deviceDate;
-						if (jDt.TryGetValue<DateTime>(out var dt)) deviceDate = dt;
-						else if (jDt.TryGetValue<Int64>(out var l)) deviceDate = DateTimeHelper.UnixTimeToUtcDateTime(l);
-						else if (jDt.TryGetValue<Int32>(out var i)) deviceDate = DateTimeHelper.UnixTimeToUtcDateTime(i);
-						else continue;
+                await mChannel.Writer.WriteAsync(new Command { Type = CommandType.UpdateTrackPoints, UserId=userId, MobileGpsDeviceId=mobileGpsDeviceId, CompanyId=companyId, TrackPoints = locations }, cancellationToken);
+                mLogger.LogInformation("Parsed and enqueued {Count} location points for user {UserId}", locations.Count, userId);
+	
+            }
+   //         var points = new List<MobileGpsDeviceTrackPoint>(locations.Count);
+			//var now = DateTime.UtcNow;
+			//foreach (var location in locations)
+			//{
+			//	try
+			//	{
+			//		if (location == null)
+			//		{
+			//			mLogger.LogWarning("Null location item in report");
+			//			continue;
+			//		}
 
-						var accuracy = jArray[2]?.GetValue<float?>();
+			//		var point = toTrackPoint(location, mobileGpsDeviceId, now);
+			//		if (point == null)
+			//		{
+			//			//mLogger.LogWarning("Location item {Uuid} has no coordinates or timestamp", location.Uuid);
+			//			continue;
+			//		}
 
-						var point = new MobileGpsDeviceTrackPoint
-						{
-                            MobileGpsDeviceId = mobileGpsDeviceId,
-                            ReceivedDate = now,
-							DeviceDate = deviceDate,
-							Location = mGeometryFactory.CreatePoint(new Coordinate(longitude.Value, latitude.Value)),
-							Speed = jArray[3]?.GetValue<float?>(),
-							LocationAccuracy = mapLocationAccuracy(accuracy),
-							BatteryLevel = jArray.Count > 8 ? jArray[8]?.GetValue<float?>() : null,
-							BatteryIsCharging = jArray.Count > 9 ? jArray[9]?.GetValue<bool?>() : null,
-							MotionActivity = mapActivityType(jArray[5]?.GetValue<string>())
-						};
-						if (point.Speed < 0) point.Speed = null;
+			//		// ---- `location` is parsed and valid here: coords, battery, activity, provider, geofence, extras, uuid, ... ----
+			//		// TODO: map state update goes here (not implemented yet).
 
-						var jDir = jArray[4]?.AsValue();
-						if (jDir != null)
-						{
-							if (jDir.TryGetValue<int>(out var iDir) && iDir >= 0) point.Dir = (short)iDir;
-							else if (jDir.TryGetValue<float>(out var fDir) && fDir >= 0) point.Dir = (short)Math.Round(fDir);
-						}
+			//		points.Add(point);
+			//	}
+			//	catch (Exception ex)
+			//	{
+			//		//mLogger.LogError(ex, "Error processing location item {Uuid}", location?.Uuid);
+			//	}
+			//}
+			//if (points.Count > 0)
+			//{
+			//	await mChannel.Writer.WriteAsync(new Command { Type = CommandType.UpdateTrackPoints, TrackPoints = points, UserId = userId, TeamId = teamId, MobileGpsDeviceId = mobileGpsDeviceId }, cancellationToken);
+			//	mLogger.LogInformation("Parsed and enqueued {Count} location points for user {UserId}", points.Count, userId);
+			//}
+		}
 
-						points.Add(point);
-					}
-					else if (jItem is JsonObject jLoc)
-					{
-						var jCoords = jLoc["coords"]?.AsObject();
-						if (jCoords == null) continue;
+		// Null when the item lacks what a track point cannot do without: a position and a device time.
+		private MobileGpsDeviceTrackPoint? toTrackPoint(MobileLocation location, int mobileGpsDeviceId, DateTime now)
+		{
+			var coords = location.Coords;
+			if (coords?.Latitude == null || coords.Longitude == null || location.Timestamp == null) return null;
 
-						var latitude = jCoords["latitude"]?.GetValue<double?>();
-						var longitude = jCoords["longitude"]?.GetValue<double?>();
-						if (latitude == null || longitude == null) continue;
-
-						var jDt = jLoc["timestamp"]?.AsValue();
-						if (jDt == null) continue;
-						DateTime deviceDate;
-						if (jDt.TryGetValue<DateTime>(out var dt)) deviceDate = dt;
-						else if (jDt.TryGetValue<Int64>(out var l)) deviceDate = DateTimeHelper.UnixTimeToUtcDateTime(l);
-						else if (jDt.TryGetValue<Int32>(out var i)) deviceDate = DateTimeHelper.UnixTimeToUtcDateTime(i);
-						else continue;
-
-						var accuracy = jCoords["accuracy"]?.GetValue<float?>();
-
-						var point = new MobileGpsDeviceTrackPoint
-						{
-                            MobileGpsDeviceId = mobileGpsDeviceId,
-                            ReceivedDate = now,
-							DeviceDate = deviceDate,
-							Location = mGeometryFactory.CreatePoint(new Coordinate(longitude.Value, latitude.Value)),
-							LocationAccuracy = mapLocationAccuracy(accuracy),
-						};
-
-						var jSpeedAcc = jCoords["speed_accuracy"]?.AsValue();
-						if (jSpeedAcc != null)
-						{
-							float speed_accuracy = 0f;
-							if (jSpeedAcc.TryGetValue<float>(out var f)) speed_accuracy = f;
-							else if (jSpeedAcc.TryGetValue<int>(out var i)) speed_accuracy = i;
-							if (speed_accuracy > 0)
-							{
-								var jSpeed = jCoords["speed"]?.AsValue();
-								if (jSpeed != null)
-								{
-									float speed = 0f;
-									if (jSpeed.TryGetValue<float>(out var fs)) speed = fs;
-									else if (jSpeed.TryGetValue<int>(out var i)) speed = i;
-									if (speed >= 0) point.Speed = speed;
-								}
-							}
-						}
-
-						var jDirAcc = jCoords["heading_accuracy"]?.AsValue();
-						if (jDirAcc != null)
-						{
-							float dirAcc = 0f;
-							if (jDirAcc.TryGetValue<float>(out var f)) dirAcc = f;
-							else if (jDirAcc.TryGetValue<int>(out var i)) dirAcc = i;
-							if (dirAcc > 0)
-							{
-								var jDir = jCoords["heading"]?.AsValue();
-								if (jDir != null)
-								{
-									float dir = 0f;
-									if (jDir.TryGetValue<float>(out var fd)) dir = fd;
-									else if (jDir.TryGetValue<int>(out var i)) dir = i;
-									if (dir >= 0) point.Dir = (short)Math.Round(dir);
-								}
-							}
-						}
-
-						var jBat = jLoc["battery"]?.AsObject();
-						if (jBat != null)
-						{
-							var batLevel = jBat["level"]?.GetValue<float?>();
-							if (batLevel >= 0) point.BatteryLevel = batLevel;
-							var batCharging = jBat["isCharging"]?.GetValue<bool?>();
-							if (batCharging != null) point.BatteryIsCharging = batCharging;
-						}
-
-						var jAct = jLoc["activity"]?.AsObject();
-						if (jAct != null)
-						{
-							var actConf = jAct["confidence"]?.GetValue<byte?>();
-							if (actConf > 0)
-							{
-								var actType = jAct["type"]?.GetValue<string>();
-								point.MotionActivity = mapActivityType(actType);
-							}
-						}
-
-						points.Add(point);
-					}
-				}
-				catch (Exception ex)
-				{
-					mLogger.LogError(ex, "Error parsing location item: {Item}", jItem);
-				}
-			}
-			if (points.Count > 0)
+			var point = new MobileGpsDeviceTrackPoint
 			{
-				await mChannel.Writer.WriteAsync(new Command { Type = CommandType.UpdateTrackPoints, TrackPoints = points, UserId = userId, TeamId = teamId, MobileGpsDeviceId = mobileGpsDeviceId }, cancellationToken);
-				mLogger.LogInformation("Parsed and enqueued {Count} location points for user {UserId}", points.Count, userId);
+				MobileGpsDeviceId = mobileGpsDeviceId,
+				ReceivedDate = now,
+				DeviceDate = location.Timestamp.Value,
+				Location = mGeometryFactory.CreatePoint(new Coordinate(coords.Longitude.Value, coords.Latitude.Value)),
+				LocationAccuracy = mapLocationAccuracy(coords.Accuracy),
+			};
+
+			// Speed and heading are only trusted when the device also reports a positive accuracy for them.
+			if (coords.SpeedAccuracy > 0 && coords.Speed >= 0) point.Speed = coords.Speed;
+			if (coords.HeadingAccuracy > 0 && coords.Heading >= 0) point.Dir = (short)Math.Round(coords.Heading.Value);
+
+			var battery = location.Battery;
+			if (battery != null)
+			{
+				if (battery.Level >= 0) point.BatteryLevel = battery.Level;
+				point.BatteryIsCharging = battery.IsCharging ?? battery.IsChargingCamel;
 			}
+
+			if (location.Activity is { Confidence: > 0 } activity) point.MotionActivity = mapActivityType(activity.Type);
+
+			return point;
 		}
 
 		// Mirrors the accuracy-radius (meters) buckets a device's location fix is graded into.
@@ -253,37 +186,44 @@ namespace api_server.Controllers.MapData.Services
 		{
 			if (command.TrackPoints.Count == 0) return;
 
-			using var scope = mScopeFactory.CreateScope();
-			var repository = scope.ServiceProvider.GetRequiredService<IRepository>();
-
-			// The phone is a gps_device of provider Mobile; its current state lives in gps_device_map_state.
-			var device = await repository.GetByIdAsync<GpsDevice>(command.MobileGpsDeviceId, cancellationToken);
-			if (device == null || device.ProviderId != GpsDeviceProvider.Mobile)
+			foreach (var trackPoint in command.TrackPoints)
 			{
-				mLogger.LogWarning("Dropping {Count} track points: device {DeviceId} is not a mobile gps_device", command.TrackPoints.Count, command.MobileGpsDeviceId);
-				return;
-			}
-            MobileGpsDeviceTrackPoint latestMobileGpsDeviceTrackPoint = command.TrackPoints[0];
-
-            foreach (var point in command.TrackPoints)
-			{
-				if (latestMobileGpsDeviceTrackPoint.DeviceDate <= point.DeviceDate)
-				{
-					latestMobileGpsDeviceTrackPoint = point;
-				}
-				point.TeamId = command.TeamId;
-				repository.Create(point);
+				mLogger.LogInformation("Track point for user {UserId}, device {DeviceId}:\n{TrackPointJson}",
+					command.UserId, command.MobileGpsDeviceId, JsonSerializer.Serialize(trackPoint, mIndentedJsonOptions));
 			}
 
+			//using var scope = mScopeFactory.CreateScope();
+			//var repository = scope.ServiceProvider.GetRequiredService<IRepository>();
 
-			var latest = latestMobileGpsDeviceTrackPoint;
-			await PhoneMapState.ApplyAsync(repository, device.Id, device.CompanyId, new PhoneFix(
-				latest.Location, latest.Speed, latest.Dir, latest.MotionActivity, latest.BatteryLevel, latest.BatteryIsCharging,
-				PhoneMapState.TrustedPositionAt(latest.DeviceDate, latest.ReceivedDate), latest.ReceivedDate), cancellationToken);
+			//// The phone is a gps_device of provider Mobile; its current state lives in gps_device_map_state.
+			//var device = await repository.GetByIdAsync<GpsDevice>(command.MobileGpsDeviceId, cancellationToken);
+			//if (device == null || device.ProviderId != GpsDeviceProvider.Mobile)
+			//{
+			//	mLogger.LogWarning("Dropping {Count} track points: device {DeviceId} is not a mobile gps_device", command.TrackPoints.Count, command.MobileGpsDeviceId);
+			//	return;
+			//}
+   //         MobileGpsDeviceTrackPoint latestMobileGpsDeviceTrackPoint = command.TrackPoints[0];
 
-            await repository.SaveAsync(cancellationToken);
+   //         foreach (var point in command.TrackPoints)
+			//{
+			//	if (latestMobileGpsDeviceTrackPoint.DeviceDate <= point.DeviceDate)
+			//	{
+			//		latestMobileGpsDeviceTrackPoint = point;
+			//	}
+			//	point.TeamId = command.TeamId;
+			//	repository.Create(point);
+			//}
+
+
+			//var latest = latestMobileGpsDeviceTrackPoint;
+			//await PhoneMapState.ApplyAsync(repository, device.Id, device.CompanyId, new PhoneFix(
+			//	latest.Location, latest.Speed, latest.Dir, latest.MotionActivity, latest.BatteryLevel, latest.BatteryIsCharging,
+			//	PhoneMapState.TrustedPositionAt(latest.DeviceDate, latest.ReceivedDate), latest.ReceivedDate), cancellationToken);
+
+   //         await repository.SaveAsync(cancellationToken);
 		}
 
+		private static readonly JsonSerializerOptions mIndentedJsonOptions = new() { WriteIndented = true };
 		private readonly Channel<Command> mChannel = Channel.CreateUnbounded<Command>();
 		private readonly GeometryFactory mGeometryFactory = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326);
 		private readonly IServiceScopeFactory mScopeFactory;

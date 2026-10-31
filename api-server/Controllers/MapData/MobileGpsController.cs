@@ -5,7 +5,6 @@ using db_model.UserManagement;
 using exs.Database.Commons.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json.Nodes;
 
 namespace api_server.Controllers.MapData
 {
@@ -20,13 +19,15 @@ namespace api_server.Controllers.MapData
 		[HttpPost("/api/mobile-gps/location-report")]
 		[ProducesResponseType(StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status400BadRequest)]
-		public async Task<IActionResult> LocationReport([FromBody] JsonArray requestData, CancellationToken cancellationToken)
+		public async Task<IActionResult> LocationReport([FromBody] List<MobileLocation?> requestData, CancellationToken cancellationToken)
 		{
 			if (MobileGpsDeviceId is null)
 			{
 				return BadRequest(new { message = "MobileGpsDeviceId claim is missing in the access token." });
 			}
-			await mMapTrackService.ParseAndUpdateDeviceLocationsAsync(UserId, TeamId, MobileGpsDeviceId.Value, requestData, cancellationToken);
+
+			// Invalid JSON, a non-array body or an item of the wrong shape never gets here: the framework answers 400.
+			await mMapTrackService.ParseAndUpdateDeviceLocationsAsync(UserId, CompanyId, MobileGpsDeviceId.Value, requestData, cancellationToken);
 			return Ok();
 		}
 

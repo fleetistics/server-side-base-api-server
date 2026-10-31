@@ -1099,6 +1099,9 @@ namespace main_database.Migrations
                     b.Property<int?>("AvatarImageId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
+
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1425,6 +1428,9 @@ namespace main_database.Migrations
 
                             b1.Property<DateTime>("ExpirationTime")
                                 .HasColumnType("timestamp with time zone");
+
+                            b1.Property<bool>("IsPersistent")
+                                .HasColumnType("boolean");
 
                             b1.Property<DateTime>("LatestRefreshTime")
                                 .HasColumnType("timestamp with time zone");

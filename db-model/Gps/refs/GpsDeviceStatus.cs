@@ -4,6 +4,7 @@
     public class GpsDeviceStatus
     {
         public const byte Active = 1;
+        public const byte MobileLogOutInactive = 12;
         public const byte Inactive = 13;
 
         public byte Id { get; set; }

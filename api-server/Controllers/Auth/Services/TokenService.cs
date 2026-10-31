@@ -19,10 +19,11 @@ namespace api_server.Auth
         // The user's active team at the time the token was issued. Only present
         // when the user has one; it is refreshed whenever the access token is renewed.
         public const string TeamIdClaim = "team_id";
+        public const string CompanyIdClaim = "company_id";
 
         private readonly JwtOptions _options = jwtOptions.Value;
 
-        public string CreateAccessToken(string userId, string sessionId, string? mobileGpsDeviceId = null, IEnumerable<string>? roles = null, string? teamId = null)
+        public string CreateAccessToken(string userId, string sessionId, string? mobileGpsDeviceId = null, IEnumerable<string>? roles = null, string? teamId = null, string? companyId = null)
         {
             var claims = new List<Claim>
             {
@@ -43,6 +44,10 @@ namespace api_server.Auth
             if (!string.IsNullOrEmpty(teamId))
             {
                 claims.Add(new Claim(TeamIdClaim, teamId));
+            }
+            if (!string.IsNullOrEmpty(companyId))
+            {
+                claims.Add(new Claim(CompanyIdClaim, companyId));
             }
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));
@@ -65,7 +70,9 @@ namespace api_server.Auth
         // Scoped to /api/auth only: the SPA never needs to send this cookie to
         // ordinary API endpoints, so narrowing the path shrinks the exposure
         // if any endpoint were ever vulnerable to XSS/CSRF.
-        public CookieOptions BuildRefreshCookieOptions(bool isHttps)
+        // persistentUntilUtc null -> session cookie (no Expires); the server-side session expiry
+        // is what actually ends such a session.
+        public CookieOptions BuildRefreshCookieOptions(bool isHttps, DateTime? persistentUntilUtc)
         {
             return new CookieOptions
             {
@@ -73,7 +80,9 @@ namespace api_server.Auth
                 Secure = isHttps,
                 SameSite = SameSiteMode.Lax,
                 Path = RefreshCookiePath,
-                Expires = DateTimeOffset.UtcNow.AddDays(_options.RefreshTokenDays),
+                Expires = persistentUntilUtc is { } until
+                    ? new DateTimeOffset(DateTime.SpecifyKind(until, DateTimeKind.Utc))
+                    : null,
             };
         }
 
@@ -81,6 +90,8 @@ namespace api_server.Auth
 
         public string RefreshCookieName => _options.RefreshCookieName;
         public int RefreshTokenDays => _options.RefreshTokenDays;
+        public TimeSpan SessionOnlyIdleLifetime => TimeSpan.FromHours(_options.SessionOnlyIdleHours);
+        public TimeSpan SessionOnlyMaxLifetime => TimeSpan.FromDays(_options.SessionOnlyMaxDays);
         public TimeSpan RefreshReuseGraceWindow => TimeSpan.FromSeconds(_options.RefreshReuseGraceSeconds);
     }
 }
