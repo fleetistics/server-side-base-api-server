@@ -192,8 +192,11 @@ user corrections `odometerAdjustment` and `engineHoursAdjustment` (not applied),
 `EngineFault` are no longer mapped; the columns stay in the table for one release (made nullable / defaulted)
 and are dropped by hand. `gps_device.AssetTypeId` points at `gps_asset_type` (what the device is on: phone, car,
 truck ...), separate from `TypeId` (the hardware). The feeders and `PhoneMapState` write the new columns; the
-dates that `StatusChangedAt` / `LastCommunicationAt` held are the `activityStatus` / `communication` parameters of
-`gps_device_state_data` (`StateValue<T>`, `DeviceStateData`).
+dates that `StatusChangedAt` / `LastCommunicationAt` held are the `activityStatus` parameter (`StateValue<T>`) and the plain
+`lastCommunicationDeviceDate` date inside the `gps_device_state_data` JSON (`DeviceStateData`). The newest position's dates are columns of
+`gps_device_state_data`: `LastLocationDeviceDate` (written by the API and feeders, only moves forward) and `LastLocationServerDate`, which only
+the database writes (triggers: on insert when `LastLocationDeviceDate` is not null, on update when `LastLocationDeviceDate` changes; the
+triggers are hand-written in a migration).
 
 **Feeder heartbeat** — `IFeederHeartbeat.CompanyWatched(companyId)` (in `Services/Feeders`) tells
 the feeders (`server-side-feeders`) that somebody is looking at a company's map, so they poll

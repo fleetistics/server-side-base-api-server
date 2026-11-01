@@ -117,8 +117,9 @@ public sealed class PhoneMapStateFlowTests : IAsyncLifetime
         var parameters = DeviceStateData.Parse(data.Data);
         parameters.ActivityStatus!.Value.ShouldBe((short)GpsDeviceActivityStatus.Moving);
         parameters.ActivityStatus.Since.ShouldBe(time, TimeSpan.FromMilliseconds(1));
-        parameters.Communication!.Value.ShouldBeTrue();
-        parameters.Communication.At.ShouldBe(time, TimeSpan.FromMilliseconds(1));
+        parameters.LastCommunicationDeviceDate.ShouldNotBeNull().ShouldBe(time, TimeSpan.FromMilliseconds(1));
+        data.LastLocationDeviceDate.ShouldNotBeNull().ShouldBe(time, TimeSpan.FromMilliseconds(1));
+        data.LastLocationServerDate.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(time);
     }
 
     [Fact]
@@ -176,7 +177,7 @@ public sealed class PhoneMapStateFlowTests : IAsyncLifetime
         (await client.PostAsJsonAsync("/api/mobile-gps/location-report",
             new[] { Fix(10.0, 10.0, 5f, "walking", now.AddSeconds(-120), 0.9f, false) })).StatusCode.ShouldBe(HttpStatusCode.OK);
         await WaitForAsync(async () => await _fixture.QueryDbAsync(db =>
-            db.Set<MobileGpsDeviceTrackPoint>().CountAsync(p => p.MobileGpsDeviceId == deviceId)) == 2 ? "both stored" : null);
+            db.Set<MobileGpsDeviceTrackPoint>().CountAsync(p => p.GpsDeviceId == deviceId)) == 2 ? "both stored" : null);
 
         var state = await _fixture.QueryDbAsync(db => db.Set<GpsDeviceMapState>().AsNoTracking().SingleAsync(s => s.GpsDeviceId == deviceId));
         state.Location.Y.ShouldBe(50.45, 1e-9);

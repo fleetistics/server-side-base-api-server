@@ -40,6 +40,19 @@ namespace db_model.Map
         }
 
         /// <summary>
+        /// <see cref="Merge"/> that also counts: returns the resulting entry and <paramref name="changes"/> plus one when the
+        /// value actually changed (a first value, or one that differs from the stored one). A late or repeated report, or the
+        /// same value again, leaves the counter as it was. Meant for tuple assignment:
+        /// <c>(p.Battery, changes) = StateValue&lt;float&gt;.SmartAssign(p.Battery, battery, at, changes);</c>
+        /// </summary>
+        public static (StateValue<T> Entry, int Changes) SmartAssign(StateValue<T>? stored, T value, DateTime at, int changes)
+        {
+            var merged = Merge(stored, value, at);
+            var changed = !ReferenceEquals(merged, stored) && (stored == null || merged.ChangedAt != stored.Since);
+            return (merged, changed ? changes + 1 : changes);
+        }
+
+        /// <summary>
         /// Like <see cref="Merge"/> but for a value the caller has just written to a column that owns it (the activity status):
         /// it replaces the stored entry whatever its time, so the entry can never disagree with the column.
         /// </summary>

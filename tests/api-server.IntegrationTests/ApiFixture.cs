@@ -179,6 +179,32 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             END $$;
             """);
 
+        // The LastLocationServerDate triggers are written by hand in a migration, which EnsureCreated does not run.
+        await ExecuteSqlAsync(
+            """
+            CREATE OR REPLACE FUNCTION set_last_location_server_date()
+            RETURNS trigger AS $$
+            BEGIN
+                NEW."LastLocationServerDate" = clock_timestamp();
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            """);
+        await ExecuteSqlAsync(
+            """
+            CREATE OR REPLACE TRIGGER trg_gps_device_state_data_location_server_date_insert
+            BEFORE INSERT ON "gps_device_state_data"
+            FOR EACH ROW WHEN (NEW."LastLocationDeviceDate" IS NOT NULL)
+            EXECUTE FUNCTION set_last_location_server_date();
+            """);
+        await ExecuteSqlAsync(
+            """
+            CREATE OR REPLACE TRIGGER trg_gps_device_state_data_location_server_date_update
+            BEFORE UPDATE ON "gps_device_state_data"
+            FOR EACH ROW WHEN (NEW."LastLocationDeviceDate" IS DISTINCT FROM OLD."LastLocationDeviceDate")
+            EXECUTE FUNCTION set_last_location_server_date();
+            """);
+
         await using (var connection = new NpgsqlConnection(_postgres.GetConnectionString()))
         {
             await connection.OpenAsync();

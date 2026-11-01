@@ -26,9 +26,8 @@ namespace db_model.Map
         /// <summary><see cref="db_model.Map.GPSLocationAccuracy"/> value of the newest position.</summary>
         public short LocationAccuracyId { get; set; } = GPSLocationAccuracy.Fine;
 
-        /// <summary>Source time of the newest position; an upsert only applies a newer one.</summary>
-        public DateTime LastPositionAt { get; set; }
 
-        public DateTime LatestOnMapUpdate { get; set; }
+        /// <summary>Set by the database (DEFAULT now() and the update trigger); not an optimistic-lock token for this table.</summary>
+        public DateTime LatestUpdate { get; set; }
     }
 }

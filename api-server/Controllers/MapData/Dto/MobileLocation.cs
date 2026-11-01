@@ -15,9 +15,9 @@ namespace api_server.Controllers.MapData.Dto
 		[JsonConverter(typeof(UnixOrIsoDateTimeConverter))]
 		public DateTime? Timestamp { get; set; }
 
-		//[JsonPropertyName("recorded_at")]
-		//[JsonConverter(typeof(UnixOrIsoDateTimeConverter))]
-		//public DateTime? RecordedAt { get; set; }
+		[JsonPropertyName("recorded_at")]
+		[JsonConverter(typeof(UnixOrIsoDateTimeConverter))]
+		public DateTime? RecordedAt { get; set; }
 
 		//[JsonPropertyName("age")] public double? Age { get; set; }
 		[JsonPropertyName("odometer")] public double? Odometer { get; set; }

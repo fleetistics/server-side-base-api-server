@@ -1,13 +1,12 @@
 ﻿using api_server.Controllers.MapData.Dto;
 using db_model.Gps;
 using db_model.Map;
-using db_model.Team;
-using db_model.UserManagement;
-using exs.Commons.Utils;
 using exs.Database.Commons.Interfaces;
+using Microsoft.Extensions.Logging.Abstractions;
 using NetTopologySuite;
 using NetTopologySuite.Geometries;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
 namespace api_server.Controllers.MapData.Services
@@ -22,7 +21,16 @@ namespace api_server.Controllers.MapData.Services
 	/// </summary>
 	public sealed class MobileGpsDeviceMapTrackService : BackgroundService
 	{
-		private enum CommandType
+		/// <summary>A heading less accurate than this (degrees) is ignored.</summary>
+		private const float MaxHeadingAccuracy = 45;
+		/// <summary>A motion activity the phone is less confident about than this (percent) is ignored.</summary>
+		private const int MinActivityConfidence = 30;
+        private const float KmhPerMs = 3.6f;
+
+        private const float MovingAboveKmh = 3f;
+        private static readonly TimeSpan ClockSkewTolerance = TimeSpan.FromMinutes(5);
+
+        private enum CommandType
 		{
 			UpdateTrackPoints
 		}
@@ -30,11 +38,11 @@ namespace api_server.Controllers.MapData.Services
 		private class Command
 		{
 			public CommandType Type { get; set; }
-            public int UserId { get; set; }
+			public int UserId { get; set; }
 			public int MobileGpsDeviceId { get; set; }
 			public int? CompanyId { get; set; }
 			public DateTime ReceivedAt { get; set; }
-            public List<MobileLocation> TrackPoints { get; set; } = default!;
+			public List<MobileLocation?> TrackPoints { get; set; } = default!;
 		}
 
 		public MobileGpsDeviceMapTrackService(IServiceScopeFactory scopeFactory, ILogger<MobileGpsDeviceMapTrackService> logger)
@@ -44,82 +52,19 @@ namespace api_server.Controllers.MapData.Services
 		}
 
 		/// <summary>
-		/// Turns a parsed location report into track points item by item: an unusable item is logged and skipped,
-		/// the rest of the batch is still processed.
+		/// Queues a parsed location report for the background worker, which turns it into track points and updates the
+		/// device's map state (see <see cref="processUpdateTrackPoints"/>).
 		/// </summary>
 		public async Task ParseAndUpdateDeviceLocationsAsync(int userId, int? companyId, int mobileGpsDeviceId, List<MobileLocation?> locations, CancellationToken cancellationToken)
 		{
-			if (locations.Count > 0)
+			if (locations.Count == 0) return;
+
+			await mChannel.Writer.WriteAsync(new Command
 			{
-                await mChannel.Writer.WriteAsync(new Command { Type = CommandType.UpdateTrackPoints, UserId=userId, MobileGpsDeviceId=mobileGpsDeviceId, CompanyId=companyId, TrackPoints = locations }, cancellationToken);
-                mLogger.LogInformation("Parsed and enqueued {Count} location points for user {UserId}", locations.Count, userId);
-	
-            }
-   //         var points = new List<MobileGpsDeviceTrackPoint>(locations.Count);
-			//var now = DateTime.UtcNow;
-			//foreach (var location in locations)
-			//{
-			//	try
-			//	{
-			//		if (location == null)
-			//		{
-			//			mLogger.LogWarning("Null location item in report");
-			//			continue;
-			//		}
-
-			//		var point = toTrackPoint(location, mobileGpsDeviceId, now);
-			//		if (point == null)
-			//		{
-			//			//mLogger.LogWarning("Location item {Uuid} has no coordinates or timestamp", location.Uuid);
-			//			continue;
-			//		}
-
-			//		// ---- `location` is parsed and valid here: coords, battery, activity, provider, geofence, extras, uuid, ... ----
-			//		// TODO: map state update goes here (not implemented yet).
-
-			//		points.Add(point);
-			//	}
-			//	catch (Exception ex)
-			//	{
-			//		//mLogger.LogError(ex, "Error processing location item {Uuid}", location?.Uuid);
-			//	}
-			//}
-			//if (points.Count > 0)
-			//{
-			//	await mChannel.Writer.WriteAsync(new Command { Type = CommandType.UpdateTrackPoints, TrackPoints = points, UserId = userId, TeamId = teamId, MobileGpsDeviceId = mobileGpsDeviceId }, cancellationToken);
-			//	mLogger.LogInformation("Parsed and enqueued {Count} location points for user {UserId}", points.Count, userId);
-			//}
-		}
-
-		// Null when the item lacks what a track point cannot do without: a position and a device time.
-		private MobileGpsDeviceTrackPoint? toTrackPoint(MobileLocation location, int mobileGpsDeviceId, DateTime now)
-		{
-			var coords = location.Coords;
-			if (coords?.Latitude == null || coords.Longitude == null || location.Timestamp == null) return null;
-
-			var point = new MobileGpsDeviceTrackPoint
-			{
-				MobileGpsDeviceId = mobileGpsDeviceId,
-				ReceivedDate = now,
-				DeviceDate = location.Timestamp.Value,
-				Location = mGeometryFactory.CreatePoint(new Coordinate(coords.Longitude.Value, coords.Latitude.Value)),
-				LocationAccuracy = mapLocationAccuracy(coords.Accuracy),
-			};
-
-			// Speed and heading are only trusted when the device also reports a positive accuracy for them.
-			if (coords.SpeedAccuracy > 0 && coords.Speed >= 0) point.Speed = coords.Speed;
-			if (coords.HeadingAccuracy > 0 && coords.Heading >= 0) point.Dir = (short)Math.Round(coords.Heading.Value);
-
-			var battery = location.Battery;
-			if (battery != null)
-			{
-				if (battery.Level >= 0) point.BatteryLevel = battery.Level;
-				point.BatteryIsCharging = battery.IsCharging ?? battery.IsChargingCamel;
-			}
-
-			if (location.Activity is { Confidence: > 0 } activity) point.MotionActivity = mapActivityType(activity.Type);
-
-			return point;
+				Type = CommandType.UpdateTrackPoints, UserId = userId, MobileGpsDeviceId = mobileGpsDeviceId, CompanyId = companyId,
+				ReceivedAt = DateTime.UtcNow, TrackPoints = locations
+			}, cancellationToken);
+			mLogger.LogInformation("Parsed and enqueued {Count} location points for user {UserId}", locations.Count, userId);
 		}
 
 		// Mirrors the accuracy-radius (meters) buckets a device's location fix is graded into.
@@ -182,48 +127,215 @@ namespace api_server.Controllers.MapData.Services
 			}
 		}
 
+		/// <summary>
+		/// Goes through the report oldest first; each location is decoded once, stored as a <see cref="MobileGpsDeviceTrackPoint"/>
+		/// and applied to the device's current state right there, on top of what <see cref="GpsDeviceMapState"/> /
+		/// <see cref="GpsDeviceStateData"/> already hold. A value the phone did not report or that is not acceptable (bad accuracy,
+		/// unknown speed or heading, low confidence ...) is ignored: it is not counted as reported and the stored value is kept.
+		/// An item that is not newer than the stored value (a late batch) does not replace it.
+		/// </summary>
 		private async Task processUpdateTrackPoints(Command command, CancellationToken cancellationToken)
 		{
 			if (command.TrackPoints.Count == 0) return;
 
-			foreach (var trackPoint in command.TrackPoints)
+			// Oldest first (OrderBy is stable), so a later acceptable value simply follows an earlier one. Items without a time
+			// sort first and are skipped below.
+			var locations = command.TrackPoints.OrderBy(l => l?.Timestamp ?? l.RecordedAt ??  DateTime.MinValue).ToList();
+
+			using var scope = mScopeFactory.CreateScope();
+			var repository = scope.ServiceProvider.GetRequiredService<IRepository>();
+			var deviceId = command.MobileGpsDeviceId;
+
+			var mapState = await repository.GetByIdAsync<GpsDeviceMapState>(deviceId, cancellationToken);
+			var stateData = await repository.GetByIdAsync<GpsDeviceStateData>(deviceId, cancellationToken);
+			bool isNewStateData = false;
+            bool isNewMapState = false;
+			int paramsChangesCounter = 0;
+			short mapStateStatusId = GpsDeviceMapStatus.Visible;
+            if (stateData == null)
 			{
-				mLogger.LogInformation("Track point for user {UserId}, device {DeviceId}:\n{TrackPointJson}",
-					command.UserId, command.MobileGpsDeviceId, JsonSerializer.Serialize(trackPoint, mIndentedJsonOptions));
+				// A device that has not been on the map yet: only an active one gets its rows.
+				var device = await repository.GetByIdAsync<GpsDevice>(deviceId, cancellationToken);
+				if (device == null || device.StatusId != GpsDeviceStatus.Active)
+				{
+					mLogger.LogWarning("Ignoring {Count} track points: gps device {DeviceId} {Reason}", locations.Count, deviceId, device == null ? "does not exist" : "is not active");
+					return;
+				}
+				isNewStateData = true;
+                stateData = new GpsDeviceStateData { GpsDeviceId = deviceId };
+            }
+			var parameters = DeviceStateData.Parse(stateData.Data);
+
+			var processed = 0;
+			foreach (var location in locations)
+			{
+				if (location == null) continue;
+                try
+				{
+                    var deviceDate = location.RecordedAt ?? location.Timestamp ?? DateTime.MinValue;
+                    var locationDate = location.Timestamp ?? location.RecordedAt;
+                    var paramChangeDate = deviceDate;
+                    Point locationPoint = mGeometryFactory.CreatePoint();
+					float? speedKmh = null;
+					short? dir = null;
+					double? altitude = null;
+                    var locationAccuracy = GPSLocationAccuracy.Bad;
+					if (location.Coords != null)
+					{
+                        locationAccuracy = mapLocationAccuracy(location.Coords.Accuracy);
+						if (locationAccuracy != GPSLocationAccuracy.Bad && location.Coords.Latitude != null && location.Coords.Longitude != null && locationDate != null)
+						{
+							locationPoint = mGeometryFactory.CreatePoint(new Coordinate(location.Coords.Latitude.Value, location.Coords.Longitude.Value));
+						}
+						else locationAccuracy = GPSLocationAccuracy.Bad;
+
+
+                        // Speed needs a positive accuracy; -1 means "unknown".
+                        speedKmh = location.Coords.SpeedAccuracy > 0 && location.Coords.Speed >= 0 ? location.Coords.Speed * KmhPerMs : null;
+                        // Heading needs a positive accuracy of at most MaxHeadingAccuracy degrees; -1 means "unknown".
+                        dir = location.Coords.HeadingAccuracy > 0 && location.Coords.HeadingAccuracy <= MaxHeadingAccuracy && location.Coords.Heading >= 0 ? (short)Math.Round(location.Coords.Heading.Value) : null;
+                        altitude = location.Coords.Altitude != null && mapLocationAccuracy(location.Coords.AltitudeAccuracy) != GPSLocationAccuracy.Bad ? Math.Round((double)location.Coords.Altitude.Value, 2) : null;
+                    }
+                    short? phoneActivity = location.Activity is { Confidence: >= MinActivityConfidence } a ? mapActivityType(a.Type) : null;
+					float? battery = location.Battery is { Level: >= 0 } b ? b.Level : null;
+					bool? charging = location.Battery?.IsCharging ?? location.Battery?.IsChargingCamel; // null when the phone sent neither
+
+					// ---- the track point: columns and Data hold the acceptable values, RawData the item as received ----
+					var activityStatusId = ActivityStatusFor(speedKmh, phoneActivity);
+					var point = new MobileGpsDeviceTrackPoint
+					{
+						GpsDeviceId = deviceId,
+						CompanyId = command.CompanyId,
+						DeviceDate = deviceDate,
+						Location = locationPoint,
+						LocationAccuracy = locationAccuracy,
+						Speed = speedKmh,
+						Dir = dir,
+						ActivityStatusId = activityStatusId,
+						RawData = JsonSerializer.Serialize(location, mRawDataJsonOptions),
+						Data = new DeviceStateSnapshot
+						{
+                            DeviceActivity = phoneActivity,
+							Battery = battery,
+							Charging = charging,
+							Altitude = altitude,
+						}.ToJson(),
+					};
+					repository.Create(point);
+					processed++;
+
+					// ---- the dated parameters: each moves forward on its own time, the changed time only when the value differs ----
+					if (parameters.LastCommunicationDeviceDate < deviceDate) parameters.LastCommunicationDeviceDate = deviceDate;
+					if (locationAccuracy != GPSLocationAccuracy.Bad && locationDate > stateData.LastLocationDeviceDate) stateData.LastLocationDeviceDate = locationDate;
+					if (battery != null) parameters.Battery = StateValue<float>.Merge(parameters.Battery, battery.Value, paramChangeDate);
+					if (charging != null) parameters.Charging = StateValue<bool>.Merge(parameters.Charging, charging.Value, paramChangeDate);
+					if (altitude != null) parameters.Altitude = StateValue<double>.Merge(parameters.Altitude, altitude.Value, paramChangeDate);
+					if (phoneActivity != null) parameters.DeviceActivity = StateValue<short>.Merge(parameters.DeviceActivity, phoneActivity.Value, paramChangeDate);
+                    parameters.ActivityStatus = StateValue<short>.Merge(parameters.ActivityStatus, activityStatusId, paramChangeDate);
+
+                    // ---- the map state ----
+                    // WarningFlags.LowBattery is left alone: the phones' battery scale is not pinned down yet, the level itself goes to the data row.
+                    if (mapState == null)
+					{
+						// A phone never seen on the map gets its row, every field, with its first acceptable position (Location is not nullable).
+						if (locationAccuracy != GPSLocationAccuracy.Bad)
+						{
+							mapState = new GpsDeviceMapState
+							{
+								GpsDeviceId = deviceId,
+								CompanyId = command.CompanyId,
+								Location = locationPoint,
+								LocationAccuracyId = locationAccuracy,
+								Speed = speedKmh,
+								Dir = dir,
+								ActivityStatusId = activityStatusId,
+								StatusId = mapStateStatusId
+                            };
+							repository.Create(mapState);
+						}
+					}
+					else
+					{
+						// An existing row gets only the values that differ; the same value reported again is not a change.
+						var changed = false;
+						if (mapState.CompanyId != command.CompanyId) { mapState.CompanyId = command.CompanyId; changed = true; }
+
+						// The position only moves forward; a Bad one is never applied. A fix also ends StalePosition.
+						if (locationAccuracy != GPSLocationAccuracy.Bad && at > mapState.LastPositionAt)
+						{
+							if (!mapState.Location.EqualsExact(point.Location)) { mapState.Location = point.Location; changed = true; }
+							if (mapState.LocationAccuracyId != locationAccuracy) { mapState.LocationAccuracyId = locationAccuracy; changed = true; }
+							if ((mapState.WarningFlags & GpsDeviceWarning.StalePosition) != 0) { mapState.WarningFlags &= ~GpsDeviceWarning.StalePosition; changed = true; }
+						//	state.LastPositionAt = at; // a newer report, not a change
+						//}
+						//// Speed and heading describe the position: not taken from an item older than the stored position.
+						//if (at >= state.LastPositionAt)
+						//{
+							var speedKmh = speedMs * KmhPerMs;
+							if (speedKmh != null && mapState.Speed != speedKmh) { mapState.Speed = speedKmh; changed = true; }
+							if (dir != null && mapState.Dir != dir) { mapState.Dir = dir; changed = true; }
+						}
+						// The status follows speed and the latest activity; the stored entry follows the column (forced) when it changes.
+						var status = ActivityStatusFor(mapState.Speed, parameters.Activity?.Value);
+						if (mapState.ActivityStatusId != status)
+						{
+							mapState.ActivityStatusId = status;
+							changed = true;
+							parameters.ActivityStatus = StateValue<short>.Set(parameters.ActivityStatus, status, at);
+						}
+						else
+						{
+							parameters.ActivityStatus = StateValue<short>.Merge(parameters.ActivityStatus, status, at);
+						}
+						if (changed) mapState.LatestOnMapUpdate = command.ReceivedAt;
+					}
+				}
+				catch (Exception ex)
+				{
+					mLogger.LogError(ex, "Error processing location item of device {DeviceId}", deviceId);
+				}
 			}
+			if (processed == 0) return;
 
-			//using var scope = mScopeFactory.CreateScope();
-			//var repository = scope.ServiceProvider.GetRequiredService<IRepository>();
-
-			//// The phone is a gps_device of provider Mobile; its current state lives in gps_device_map_state.
-			//var device = await repository.GetByIdAsync<GpsDevice>(command.MobileGpsDeviceId, cancellationToken);
-			//if (device == null || device.ProviderId != GpsDeviceProvider.Mobile)
-			//{
-			//	mLogger.LogWarning("Dropping {Count} track points: device {DeviceId} is not a mobile gps_device", command.TrackPoints.Count, command.MobileGpsDeviceId);
-			//	return;
-			//}
-   //         MobileGpsDeviceTrackPoint latestMobileGpsDeviceTrackPoint = command.TrackPoints[0];
-
-   //         foreach (var point in command.TrackPoints)
-			//{
-			//	if (latestMobileGpsDeviceTrackPoint.DeviceDate <= point.DeviceDate)
-			//	{
-			//		latestMobileGpsDeviceTrackPoint = point;
-			//	}
-			//	point.TeamId = command.TeamId;
-			//	repository.Create(point);
-			//}
-
-
-			//var latest = latestMobileGpsDeviceTrackPoint;
-			//await PhoneMapState.ApplyAsync(repository, device.Id, device.CompanyId, new PhoneFix(
-			//	latest.Location, latest.Speed, latest.Dir, latest.MotionActivity, latest.BatteryLevel, latest.BatteryIsCharging,
-			//	PhoneMapState.TrustedPositionAt(latest.DeviceDate, latest.ReceivedDate), latest.ReceivedDate), cancellationToken);
-
-   //         await repository.SaveAsync(cancellationToken);
+			stateData.Data = parameters.ToJson();
+			//data.LatestOnMapUpdate = command.ReceivedAt;
+			if (isNewData) repository.Create(stateData);
+			await repository.SaveAsync(cancellationToken);
 		}
-
-		private static readonly JsonSerializerOptions mIndentedJsonOptions = new() { WriteIndented = true };
+        /// <summary>
+        /// Moving above the speed threshold; otherwise Idle while the phone is in a vehicle (engine-on stop),
+        /// else Parked. A phone has no ignition, so motion activity is the nearest signal. Offline is not set here.
+        /// </summary>
+        private static byte ActivityStatusFor(float? speedKmh, short? phoneActivity)
+        {
+			if (phoneActivity == null )
+			{
+				if (speedKmh != null )
+				{
+                    if (speedKmh > MovingAboveKmh) return GpsDeviceActivityStatus.Driving;
+                    else return GpsDeviceActivityStatus.Stopped;
+                }
+				else return GpsDeviceActivityStatus.Unknown;
+            }
+			else
+			{
+				switch (phoneActivity)
+				{
+					case MobileDeviceMotionActivity.InVehicle:
+                        if (speedKmh != null && speedKmh > MovingAboveKmh) return GpsDeviceActivityStatus.Driving;
+                        else return GpsDeviceActivityStatus.Idle;
+                    case MobileDeviceMotionActivity.OnBicycle:
+                        return GpsDeviceActivityStatus.OnBicycle;
+                    case MobileDeviceMotionActivity.Running:
+                        return GpsDeviceActivityStatus.Running;
+                    case MobileDeviceMotionActivity.Walking:
+                        return GpsDeviceActivityStatus.Walking;
+                    default:
+                        return GpsDeviceActivityStatus.Stopped;
+                }
+			}
+        }
+        private static readonly JsonSerializerOptions mRawDataJsonOptions = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
 		private readonly Channel<Command> mChannel = Channel.CreateUnbounded<Command>();
 		private readonly GeometryFactory mGeometryFactory = NtsGeometryServices.Instance.CreateGeometryFactory(srid: 4326);
 		private readonly IServiceScopeFactory mScopeFactory;

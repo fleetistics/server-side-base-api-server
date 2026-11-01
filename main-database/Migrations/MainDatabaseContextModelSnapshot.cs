@@ -430,11 +430,10 @@ namespace main_database.Migrations
                     b.Property<short?>("Dir")
                         .HasColumnType("smallint");
 
-                    b.Property<DateTime>("LastPositionAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("LatestOnMapUpdate")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<DateTime>("LatestUpdate")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
 
                     b.Property<Point>("Location")
                         .IsRequired()
@@ -494,8 +493,17 @@ namespace main_database.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
-                    b.Property<DateTime>("LatestOnMapUpdate")
+                    b.Property<DateTime?>("LastLocationDeviceDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastLocationServerDate")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
 
                     b.HasKey("GpsDeviceId");
 
@@ -567,17 +575,30 @@ namespace main_database.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<bool?>("BatteryIsCharging")
-                        .HasColumnType("boolean");
+                    b.Property<short?>("ActivityStatusId")
+                        .HasColumnType("smallint");
 
-                    b.Property<float?>("BatteryLevel")
-                        .HasColumnType("real");
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("DeviceDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<short?>("Dir")
                         .HasColumnType("smallint");
+
+                    b.Property<int>("GpsDeviceId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
 
                     b.Property<Point>("Location")
                         .IsRequired()
@@ -586,23 +607,12 @@ namespace main_database.Migrations
                     b.Property<short>("LocationAccuracy")
                         .HasColumnType("smallint");
 
-                    b.Property<int>("MobileGpsDeviceId")
-                        .HasColumnType("integer");
-
-                    b.Property<short?>("MotionActivity")
-                        .HasColumnType("smallint");
-
-                    b.Property<float?>("Odometer")
-                        .HasColumnType("real");
-
-                    b.Property<DateTime>("ReceivedDate")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<string>("RawData")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<float?>("Speed")
                         .HasColumnType("real");
-
-                    b.Property<int?>("TeamId")
-                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 

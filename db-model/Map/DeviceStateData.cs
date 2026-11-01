@@ -11,9 +11,9 @@ namespace db_model.Map
         public const string BatteryVoltage = "batteryVoltage";
         public const string Battery = "battery";
         public const string Charging = "charging";
-        public const string Activity = "activity";
+        public const string DeviceActivity = "deviceActivity";
         public const string ActivityStatus = "activityStatus";
-        public const string Communication = "communication";
+        public const string LastCommunicationDeviceDate = "lastCommunicationDeviceDate";
         public const string PrivateMode = "privateMode";
         public const string EngineFault = "engineFault";
         public const string BatteryLow = "batteryLow";
@@ -26,6 +26,7 @@ namespace db_model.Map
         public const string FuelTotal = "fuelTotal";
         public const string FuelIdleTotal = "fuelIdleTotal";
         public const string SeatBelt = "seatBelt";
+        public const string Altitude = "altitude";
     }
 
     /// <summary>
@@ -53,8 +54,8 @@ namespace db_model.Map
         public StateValue<bool>? Charging { get; set; }
 
         /// <summary>Phone motion activity (<see cref="MobileDeviceMotionActivity"/>); not the map's activity status.</summary>
-        [JsonPropertyName(StateKeys.Activity)]
-        public StateValue<short>? Activity { get; set; }
+        [JsonPropertyName(StateKeys.DeviceActivity)]
+        public StateValue<short>? DeviceActivity { get; set; }
 
         /// <summary>
         /// <see cref="GpsDeviceMapState.ActivityStatusId"/> with its dates: <see cref="StateValue{T}.ChangedAt"/> is "parked
@@ -63,12 +64,9 @@ namespace db_model.Map
         [JsonPropertyName(StateKeys.ActivityStatus)]
         public StateValue<short>? ActivityStatus { get; set; }
 
-        /// <summary>
-        /// Whether the device is communicating: <see cref="StateValue{T}.At"/> is the newest record of any kind (replaces the
-        /// removed LastCommunicationAt column), <see cref="StateValue{T}.ChangedAt"/> since when it has been (not) communicating.
-        /// </summary>
-        [JsonPropertyName(StateKeys.Communication)]
-        public StateValue<bool>? Communication { get; set; }
+        /// <summary>Device time of the newest record of any kind from the device (replaces the removed LastCommunicationAt column). A plain UTC date, not a <see cref="StateValue{T}"/>.</summary>
+        [JsonPropertyName(StateKeys.LastCommunicationDeviceDate)]
+        public DateTime? LastCommunicationDeviceDate { get; set; }
 
         /// <summary>
         /// The device is in the provider's private (personal) mode: <see cref="StateValue{T}.ChangedAt"/> is since when. While it is
@@ -126,6 +124,10 @@ namespace db_model.Map
         /// <summary>Driver seat belt as the provider reports it: above 0 is unbuckled, 0 buckled, below 0 unavailable (Geotab: <c>DiagnosticDriverSeatbeltId</c>). See <see cref="IsSeatBeltUnbuckled"/>.</summary>
         [JsonPropertyName(StateKeys.SeatBelt)]
         public StateValue<double>? SeatBelt { get; set; }
+
+        /// <summary>Altitude of the newest position, in metres above sea level, as the device reports it.</summary>
+        [JsonPropertyName(StateKeys.Altitude)]
+        public StateValue<double>? Altitude { get; set; }
 
         /// <summary>Parameters this version does not know, kept verbatim.</summary>
         [JsonIgnore]
@@ -188,7 +190,7 @@ namespace db_model.Map
                 case StateKeys.Charging: return tryRead<bool>(node, v => data.Charging = v);
                 case StateKeys.Activity: return tryRead<short>(node, v => data.Activity = v);
                 case StateKeys.ActivityStatus: return tryRead<short>(node, v => data.ActivityStatus = v);
-                case StateKeys.Communication: return tryRead<bool>(node, v => data.Communication = v);
+                case StateKeys.LastCommunicationDeviceDate: return tryReadDate(node, v => data.LastCommunicationDeviceDate = v);
                 case StateKeys.PrivateMode: return tryRead<bool>(node, v => data.PrivateMode = v);
                 case StateKeys.EngineFault: return tryRead<bool>(node, v => data.EngineFault = v);
                 case StateKeys.BatteryLow: return tryRead<bool>(node, v => data.BatteryLow = v);
@@ -201,8 +203,25 @@ namespace db_model.Map
                 case StateKeys.FuelTotal: return tryRead<double>(node, v => data.FuelTotal = v);
                 case StateKeys.FuelIdleTotal: return tryRead<double>(node, v => data.FuelIdleTotal = v);
                 case StateKeys.SeatBelt: return tryRead<double>(node, v => data.SeatBelt = v);
+                case StateKeys.Altitude: return tryRead<double>(node, v => data.Altitude = v);
                 default: return false;
             }
+        }
+
+        /// <summary>The later of a stored date and a new one: a late or repeated report never moves a date back.</summary>
+        public static DateTime Newest(DateTime? stored, DateTime at) => stored != null && stored.Value >= at ? stored.Value : at;
+
+        private static bool tryReadDate(JsonNode? node, Action<DateTime> assign)
+        {
+            if (node is not JsonValue) return false;
+            try
+            {
+                assign(node.Deserialize<DateTime>());
+                return true;
+            }
+            catch (JsonException) { return false; }
+            catch (InvalidOperationException) { return false; }
+            catch (FormatException) { return false; }
         }
 
         private static bool tryRead<T>(JsonNode? node, Action<StateValue<T>> assign)

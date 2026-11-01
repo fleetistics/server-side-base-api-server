@@ -30,6 +30,28 @@ public sealed class DeviceStateDataTests
     }
 
     [Fact]
+    public void Snapshot_IsTheSameKeysWithPlainValuesAndNoDates()
+    {
+        var data = new DeviceStateData
+        {
+            Battery = new StateValue<float>(0.5f, T1, T0),
+            Charging = new StateValue<bool>(true, T1),
+            ActivityStatus = new StateValue<short>(2, T1, T0),
+        };
+
+        var json = JsonNode.Parse(DeviceStateSnapshot.From(data).ToJson())!.AsObject();
+
+        json.Select(p => p.Key).ShouldBe(new[] { "battery", "charging", "activityStatus" }, ignoreOrder: true);
+        json["battery"]!.GetValue<float>().ShouldBe(0.5f);
+        json["charging"]!.GetValue<bool>().ShouldBeTrue();
+        json["activityStatus"]!.GetValue<short>().ShouldBe((short)2);
+
+        var back = DeviceStateSnapshot.Parse(json.ToJsonString());
+        (back.Battery, back.Charging, back.ActivityStatus).ShouldBe((0.5f, true, (short?)2));
+        DeviceStateSnapshot.Parse("not json").ToJson().ShouldBe("{}");
+    }
+
+    [Fact]
     public void RoundTrip_KeepsEveryParameterWithItsOwnDates()
     {
         var data = new DeviceStateData
@@ -40,7 +62,7 @@ public sealed class DeviceStateDataTests
             Charging = new StateValue<bool>(false, T0, T0),
             Activity = new StateValue<short>(3, T1),
             ActivityStatus = new StateValue<short>(GpsDeviceActivityStatus.Parked, T1, T0),
-            Communication = new StateValue<bool>(true, T1, T0),
+            LastCommunicationDeviceDate = T1,
             PrivateMode = new StateValue<bool>(true, T1, T0),
             EngineFault = new StateValue<bool>(true, T1, T0),
             BatteryLow = new StateValue<bool>(true, T1, T0),
@@ -53,6 +75,7 @@ public sealed class DeviceStateDataTests
             OdometerAdjustment = new StateValue<double>(-1500, T1),
             EngineHoursAdjustment = new StateValue<double>(3600, T1),
             FuelLevel = new StateValue<double>(24.31, T1, T0),
+            Altitude = new StateValue<double>(105.6, T1),
         };
 
         var back = DeviceStateData.Parse(data.ToJson());
@@ -68,7 +91,8 @@ public sealed class DeviceStateDataTests
         back.Activity!.Value.ShouldBe((short)3);
         back.ActivityStatus!.Value.ShouldBe((short)GpsDeviceActivityStatus.Parked);
         back.ActivityStatus.Since.ShouldBe(T0);
-        back.Communication!.Value.ShouldBeTrue();
+        back.LastCommunicationDeviceDate.ShouldBe(T1);
+        back.LastCommunicationDeviceDate!.Value.Kind.ShouldBe(DateTimeKind.Utc);
         back.PrivateMode!.Value.ShouldBeTrue();
         back.PrivateMode.Since.ShouldBe(T0);
         back.EngineFault!.Value.ShouldBeTrue();
@@ -86,6 +110,7 @@ public sealed class DeviceStateDataTests
         back.EngineHoursAdjustment!.Value.ShouldBe(3600);
         back.FuelLevel!.Value.ShouldBe(24.31);
         back.FuelLevel.Since.ShouldBe(T0);
+        back.Altitude!.Value.ShouldBe(105.6);
         back.Extra.ShouldBeNull();
     }
 
@@ -267,5 +292,33 @@ public sealed class DeviceStateDataTests
         data.Ignition.ShouldBeNull();
         data.Extra.ShouldBeNull();
         data.ToJson().ShouldBe("{}");
+    }
+}
+
+/// <summary>A location item as the phone's background-geolocation SDK really sends it.</summary>
+public sealed class MobileLocationPayloadTests
+{
+    private const string Payload = """
+        {"timestamp":"2026-10-30T23:35:18.961Z","odometer":3407633.45,"odometer_error":735.84,
+         "coords":{"floor":null,"latitude":39.4599581,"longitude":-0.4719251,"accuracy":10.18,"altitude":105.6,
+                   "ellipsoidal_altitude":105.6,"altitude_accuracy":0.66,"heading":-1,"heading_accuracy":-1,"speed":0.09,"speed_accuracy":1.5},
+         "battery":{"is_charging":true,"isCharging":null,"level":1},
+         "activity":{"type":"still","confidence":100},"provider":null}
+        """;
+
+    [Fact]
+    public void The_real_payload_binds_with_every_value_in_place()
+    {
+        var location = System.Text.Json.JsonSerializer.Deserialize<api_server.Controllers.MapData.Dto.MobileLocation>(Payload)!;
+
+        location.Timestamp.ShouldBe(new DateTime(2026, 10, 30, 23, 35, 18, 961, DateTimeKind.Utc));
+        location.Coords!.Latitude.ShouldBe(39.4599581);
+        location.Coords.Longitude.ShouldBe(-0.4719251);
+        location.Coords.Speed.ShouldBe(0.09f);
+        location.Coords.Heading.ShouldBe(-1f);
+        location.Battery!.IsCharging.ShouldBe(true);
+        location.Battery.Level.ShouldBe(1f);
+        location.Activity!.Type.ShouldBe("still");
+        location.Provider.ShouldBeNull();
     }
 }
