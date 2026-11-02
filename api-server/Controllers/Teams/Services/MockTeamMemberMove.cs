@@ -68,6 +68,9 @@ namespace api_server.Controllers.Teams.Services
 
 		private sealed record Job(int TeamId, int CreatorUserId);
 
+		/// <summary>One fake position report: speed in km/h (as the map state keeps it), heading in degrees, UTC device time.</summary>
+		private sealed record Fix(Point Location, float SpeedKmh, short? Dir, short Activity, byte ActivityStatusId, DateTime At);
+
 		// Position is kept in meters east (X) / north (Y) of the member's own circle centre.
 		private sealed class Member
 		{
@@ -184,7 +187,7 @@ namespace api_server.Controllers.Teams.Services
 					var location = await (
 							from s in repository.GetQueryable<GpsDeviceMapState>()
 							join d in repository.GetQueryable<GpsDevice>(x => x.ProviderId == GpsDeviceProvider.Mobile && x.UserId == job.CreatorUserId) on s.GpsDeviceId equals d.Id
-							orderby s.LatestOnMapUpdate descending
+							orderby s.LatestUpdate descending
 							select s.Location)
 						.AsNoTracking()
 						.FirstOrDefaultAsync(cancellationToken);
@@ -252,7 +255,7 @@ namespace api_server.Controllers.Teams.Services
 					Angle = Random.Shared.NextDouble() * 2 * Math.PI
 				};
 
-				await PhoneMapState.ApplyAsync(repository, device.Id, device.CompanyId, buildFix(member, creatorLocation), cancellationToken);
+				await applyFixAsync(repository, device.Id, device.CompanyId, buildFix(member, creatorLocation), cancellationToken);
 
 				await repository.SaveAsync(cancellationToken);
 				mLogger.LogInformation("Mock members for team {TeamId}: user {UserId} switched to the team", job.TeamId, userId);
@@ -278,12 +281,62 @@ namespace api_server.Controllers.Teams.Services
 			if (members.Count == 0) return true;
 
 			foreach (var member in members)
-				{
-					advance(member, member.SpeedMs * elapsedSeconds);
-					await PhoneMapState.ApplyAsync(repository, member.DeviceId, null, buildFix(member, creatorLocation), cancellationToken);
-				}
+			{
+				advance(member, member.SpeedMs * elapsedSeconds);
+				await applyFixAsync(repository, member.DeviceId, null, buildFix(member, creatorLocation), cancellationToken);
+			}
 			await repository.SaveAsync(cancellationToken);
 			return true;
+		}
+
+		/// <summary>
+		/// Writes the fix the way MobileGpsDeviceMapTrackService does for a real phone: the map state gets the position, speed,
+		/// heading and activity status; the state data gets the dated parameters and the device-time columns.
+		/// <paramref name="companyId"/> null keeps the stored company.
+		/// </summary>
+		private static async Task applyFixAsync(IRepository repository, int deviceId, int? companyId, Fix fix, CancellationToken cancellationToken)
+		{
+			var mapState = await repository.GetByIdAsync<GpsDeviceMapState>(deviceId, cancellationToken);
+			var stateData = await repository.GetByIdAsync<GpsDeviceStateData>(deviceId, cancellationToken);
+			if (stateData == null)
+			{
+				stateData = new GpsDeviceStateData { GpsDeviceId = deviceId };
+				repository.Create(stateData);
+			}
+			var parameters = DeviceStateData.Parse(stateData.Data);
+
+			stateData.LastCommunicationDeviceDate = fix.At;
+			stateData.LastLocationDeviceDate = fix.At;
+			// A mock member never stands still, so every fix is a new location.
+			stateData.FirstLocationDeviceDate = fix.At;
+			parameters.Speed = StateValue<float>.Merge(parameters.Speed, fix.SpeedKmh, fix.At);
+			if (fix.Dir != null) parameters.Direction = StateValue<short>.Merge(parameters.Direction, fix.Dir.Value, fix.At);
+			parameters.DeviceActivity = StateValue<short>.Merge(parameters.DeviceActivity, fix.Activity, fix.At);
+			parameters.ActivityStatus = StateValue<short>.Merge(parameters.ActivityStatus, fix.ActivityStatusId, fix.At);
+			stateData.Data = parameters.ToJson();
+
+			if (mapState == null)
+			{
+				repository.Create(new GpsDeviceMapState
+				{
+					GpsDeviceId = deviceId,
+					CompanyId = companyId,
+					Location = fix.Location,
+					LocationAccuracyId = GPSLocationAccuracy.Fine,
+					Speed = fix.SpeedKmh,
+					Dir = fix.Dir,
+					ActivityStatusId = fix.ActivityStatusId,
+					StatusId = GpsDeviceMapStatus.Visible
+				});
+				return;
+			}
+			if (companyId != null) mapState.CompanyId = companyId;
+			mapState.Location = fix.Location;
+			mapState.LocationAccuracyId = GPSLocationAccuracy.Fine;
+			mapState.Speed = fix.SpeedKmh;
+			mapState.Dir = fix.Dir;
+			mapState.ActivityStatusId = fix.ActivityStatusId;
+			mapState.WarningFlags &= ~GpsDeviceWarning.StalePosition;
 		}
 
 		// First head straight to the circle (the initial spot is random, not on it), then go round it.
@@ -332,15 +385,22 @@ namespace api_server.Controllers.Teams.Services
 			}
 		}
 
-		private PhoneFix buildFix(Member m, Point creatorLocation)
+		private Fix buildFix(Member m, Point creatorLocation)
 		{
 			var northKm = m.CenterNorthKm + m.Y / 1000;
 			var eastKm = m.CenterEastKm + m.X / 1000;
 			var latitude = creatorLocation.Y + northKm / KmPerDegreeLat;
 			var longitude = creatorLocation.X + eastKm / (KmPerDegreeLat * Math.Cos(creatorLocation.Y * Math.PI / 180));
 
-			var now = DateTime.UtcNow;
-			return new PhoneFix(mGeometryFactory.CreatePoint(new Coordinate(longitude, latitude)), (float)m.SpeedMs, m.Heading, m.SpeedMs * 3.6 < 12 ? MobileDeviceMotionActivity.Running : MobileDeviceMotionActivity.OnBicycle, null, null, now, now);
+			var speedKmh = (float)(m.SpeedMs * 3.6);
+			var running = speedKmh < 12;
+			return new Fix(
+				mGeometryFactory.CreatePoint(new Coordinate(longitude, latitude)),
+				speedKmh,
+				m.Heading,
+				running ? MobileDeviceMotionActivity.Running : MobileDeviceMotionActivity.OnBicycle,
+				running ? GpsDeviceActivityStatus.Running : GpsDeviceActivityStatus.OnBicycle,
+				DateTime.UtcNow);
 		}
 
 		// Uniform over the disc (sqrt keeps points from bunching at the centre); result is (east, north) in km.

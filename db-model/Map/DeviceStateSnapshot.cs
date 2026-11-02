@@ -82,7 +82,7 @@ namespace db_model.Map
             BatteryVoltage = data.BatteryVoltage?.Value,
             Battery = data.Battery?.Value,
             Charging = data.Charging?.Value,
-            Activity = data.Activity?.Value,
+            DeviceActivity = data.DeviceActivity?.Value,
             ActivityStatus = data.ActivityStatus?.Value,
             PrivateMode = data.PrivateMode?.Value,
             EngineFault = data.EngineFault?.Value,

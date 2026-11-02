@@ -493,11 +493,13 @@ namespace main_database.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
-                    b.Property<DateTime?>("LastLocationDeviceDate")
+                    b.Property<DateTime?>("FirstLocationDeviceDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("LastLocationServerDate")
-                        .ValueGeneratedOnAddOrUpdate()
+                    b.Property<DateTime?>("LastCommunicationDeviceDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastLocationDeviceDate")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("LatestUpdate")

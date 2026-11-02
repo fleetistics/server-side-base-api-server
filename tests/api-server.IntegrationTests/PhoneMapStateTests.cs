@@ -119,7 +119,6 @@ public sealed class PhoneMapStateFlowTests : IAsyncLifetime
         parameters.ActivityStatus.Since.ShouldBe(time, TimeSpan.FromMilliseconds(1));
         parameters.LastCommunicationDeviceDate.ShouldNotBeNull().ShouldBe(time, TimeSpan.FromMilliseconds(1));
         data.LastLocationDeviceDate.ShouldNotBeNull().ShouldBe(time, TimeSpan.FromMilliseconds(1));
-        data.LastLocationServerDate.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(time);
     }
 
     [Fact]

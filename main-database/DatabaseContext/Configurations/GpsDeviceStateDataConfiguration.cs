@@ -14,9 +14,6 @@ namespace mf.aiApi.mainDatabase.DatabaseContext.Configurations
 			entity.Property(e => e.GpsDeviceId).ValueGeneratedNever();
 			entity.Property(e => e.Data).HasColumnType("jsonb");
 
-			// Stamped by the triggers (see the LastLocationServerDate migration): EF never sends it, it only reads it back.
-			entity.Property(e => e.LastLocationServerDate).ValueGeneratedOnAddOrUpdate();
-
 			entity.HasStorageParameter("fillfactor", 75);
 		}
 	}

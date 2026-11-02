@@ -11,14 +11,11 @@ namespace db_model.Map
         /// <summary>JSON object: key -> { "v": value, "t": source time }; each key keeps its own timestamp.</summary>
         public string Data { get; set; } = "{}";
 
+        public DateTime? LastCommunicationDeviceDate { get; set; }
+
         /// <summary>Device time of the newest acceptable position; null until the device reported one. Only moves forward.</summary>
         public DateTime? LastLocationDeviceDate { get; set; }
-
-        /// <summary>
-        /// Server time at which <see cref="LastLocationDeviceDate"/> was last changed. Set by the database only: on insert when
-        /// <see cref="LastLocationDeviceDate"/> is not null, and on every update that changes it. Never assign it.
-        /// </summary>
-        public DateTime? LastLocationServerDate { get; set; }
+        public DateTime? FirstLocationDeviceDate { get; set; }
 
         /// <summary>Set by the database (DEFAULT now() and the update trigger); not an optimistic-lock token for this table.</summary>
         public DateTime LatestUpdate { get; set; }

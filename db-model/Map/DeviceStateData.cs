@@ -13,7 +13,7 @@ namespace db_model.Map
         public const string Charging = "charging";
         public const string DeviceActivity = "deviceActivity";
         public const string ActivityStatus = "activityStatus";
-        public const string LastCommunicationDeviceDate = "lastCommunicationDeviceDate";
+
         public const string PrivateMode = "privateMode";
         public const string EngineFault = "engineFault";
         public const string BatteryLow = "batteryLow";
@@ -27,6 +27,8 @@ namespace db_model.Map
         public const string FuelIdleTotal = "fuelIdleTotal";
         public const string SeatBelt = "seatBelt";
         public const string Altitude = "altitude";
+        public const string Speed = "speed";
+        public const string Direction = "direction";
     }
 
     /// <summary>
@@ -63,10 +65,6 @@ namespace db_model.Map
         /// </summary>
         [JsonPropertyName(StateKeys.ActivityStatus)]
         public StateValue<short>? ActivityStatus { get; set; }
-
-        /// <summary>Device time of the newest record of any kind from the device (replaces the removed LastCommunicationAt column). A plain UTC date, not a <see cref="StateValue{T}"/>.</summary>
-        [JsonPropertyName(StateKeys.LastCommunicationDeviceDate)]
-        public DateTime? LastCommunicationDeviceDate { get; set; }
 
         /// <summary>
         /// The device is in the provider's private (personal) mode: <see cref="StateValue{T}.ChangedAt"/> is since when. While it is
@@ -129,6 +127,14 @@ namespace db_model.Map
         [JsonPropertyName(StateKeys.Altitude)]
         public StateValue<double>? Altitude { get; set; }
 
+        /// <summary>Altitude of the newest position, in metres above sea level, as the device reports it.</summary>
+        [JsonPropertyName(StateKeys.Speed)]
+        public StateValue<float>? Speed { get; set; }
+
+        /// <summary>Altitude of the newest position, in metres above sea level, as the device reports it.</summary>
+        [JsonPropertyName(StateKeys.Direction)]
+        public StateValue<short>? Direction { get; set; }
+
         /// <summary>Parameters this version does not know, kept verbatim.</summary>
         [JsonIgnore]
         public Dictionary<string, JsonNode?>? Extra { get; set; }
@@ -188,9 +194,8 @@ namespace db_model.Map
                 case StateKeys.BatteryVoltage: return tryRead<double>(node, v => data.BatteryVoltage = v);
                 case StateKeys.Battery: return tryRead<float>(node, v => data.Battery = v);
                 case StateKeys.Charging: return tryRead<bool>(node, v => data.Charging = v);
-                case StateKeys.Activity: return tryRead<short>(node, v => data.Activity = v);
+                case StateKeys.DeviceActivity: return tryRead<short>(node, v => data.DeviceActivity = v);
                 case StateKeys.ActivityStatus: return tryRead<short>(node, v => data.ActivityStatus = v);
-                case StateKeys.LastCommunicationDeviceDate: return tryReadDate(node, v => data.LastCommunicationDeviceDate = v);
                 case StateKeys.PrivateMode: return tryRead<bool>(node, v => data.PrivateMode = v);
                 case StateKeys.EngineFault: return tryRead<bool>(node, v => data.EngineFault = v);
                 case StateKeys.BatteryLow: return tryRead<bool>(node, v => data.BatteryLow = v);

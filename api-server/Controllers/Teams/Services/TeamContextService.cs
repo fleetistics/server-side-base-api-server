@@ -540,7 +540,7 @@ namespace api_server.Controllers.Teams.Services
 			var rows = await (
 				from s in mRepository.GetQueryable<GpsDeviceMapState>()
 				join d in mRepository.GetQueryable<GpsDevice>(x => x.ProviderId == GpsDeviceProvider.Mobile && x.UserId != null) on s.GpsDeviceId equals d.Id
-				where load.Contains(d.UserId!.Value) || (updated.Contains(d.UserId!.Value) && s.LatestOnMapUpdate > since)
+				where load.Contains(d.UserId!.Value) //|| (updated.Contains(d.UserId!.Value) && s.LatestOnMapUpdate > since)
 				join sd in mRepository.GetQueryable<GpsDeviceStateData>() on s.GpsDeviceId equals sd.GpsDeviceId into sds
 				from sd in sds.DefaultIfEmpty()
 				select new { State = s, UserId = d.UserId!.Value, Data = sd != null ? sd.Data : null })

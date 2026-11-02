@@ -16,10 +16,10 @@ namespace api_server.Controllers.MapData.Dto
             UserId = userId;
             Latitude = model.Location.Y;
             Longitude = model.Location.X;
-            Speed = model.Speed / Services.PhoneMapState.KmhPerMs;
-            Dir = model.Dir;
-            (MotionActivity, BatteryLevel) = Services.PhoneMapState.ReadValues(stateData);
-            LatestOnMapUpdate = model.LatestOnMapUpdate;
+            //Speed = model.Speed / Services.PhoneMapState.KmhPerMs;
+            //Dir = model.Dir;
+            //(MotionActivity, BatteryLevel) = Services.PhoneMapState.ReadValues(stateData);
+            //LatestOnMapUpdate = model.LatestOnMapUpdate;
         }
 
         public int MobileGpsDeviceId { get; set; }
