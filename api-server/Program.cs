@@ -57,6 +57,7 @@ else
         }
     }
 }
+builder.Configuration.AddJsonFile(directoryName + "/code-version.json", optional: true, reloadOnChange: false);
 
 try
 {
@@ -381,8 +382,10 @@ try
     {
         Log.Warning("{Key} is true: /api/test/email can send mail from the configured email sender account to any address for any logged-in user. Keep it off everywhere except a dev machine.", TestEmailEnabledAttribute.ConfigKey);
     }
+    var codeVersion = builder.Configuration.GetSection("CodeVersion").Get<string>() ?? "unknown";
+    var gitHash = builder.Configuration.GetSection("GitHash").Get<string>() ?? "unknown";
 
-    Log.Information("Application starting up...");
+    Log.Information($"Application CodeVersion: {codeVersion}, GitHash: {gitHash} starting up... ");
     app.Run();
 
 

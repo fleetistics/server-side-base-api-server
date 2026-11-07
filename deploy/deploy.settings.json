@@ -1,0 +1,8 @@
+{
+  "appName": "cc-api-server",
+  "projectToBuild": "api-server",
+  "linkedRepos": [
+    "../server-side-commons",
+    "../server-side-notifications"
+  ]
+}

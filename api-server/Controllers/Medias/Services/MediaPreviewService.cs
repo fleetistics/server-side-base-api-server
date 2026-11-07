@@ -3,8 +3,7 @@ using exs.Database.Commons.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using db_model.Media;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace api_server.Medias
 {
@@ -127,16 +126,36 @@ namespace api_server.Medias
 			var previewFileName = $"{Path.GetFileNameWithoutExtension(media.FileName)}_preview.png";
 			var previewPath = Path.Combine(uploadFolder, previewFileName);
 
-			using (var image = await Image.LoadAsync(sourcePath, ct))
+			// Decode/resize/encode are CPU-bound and synchronous in SkiaSharp; this already runs
+			// on the background worker, so it doesn't block any request thread.
+			using (var source = SKBitmap.Decode(sourcePath))
 			{
-				// ResizeMode.Max fits the image inside the box on its longer side and keeps
-				// the aspect ratio — exactly "shrink to fit", never crops or stretches.
-				image.Mutate(x => x.Resize(new ResizeOptions
+				if (source == null)
 				{
-					Size = new Size(mSettings.PreviewMaxWidth, mSettings.PreviewMaxHeight),
-					Mode = ResizeMode.Max,
-				}));
-				await image.SaveAsync(previewPath, ct);
+					mLogger.LogWarning("Could not decode image {SourcePath} for media {MediaId}; skipping preview", sourcePath, mediaId);
+					return;
+				}
+
+				// Fit inside the box on the limiting side and keep the aspect ratio —
+				// "shrink to fit", never crops or stretches.
+				var scale = Math.Min(
+					(double)mSettings.PreviewMaxWidth / source.Width,
+					(double)mSettings.PreviewMaxHeight / source.Height);
+				var info = new SKImageInfo(
+					Math.Max(1, (int)Math.Round(source.Width * scale)),
+					Math.Max(1, (int)Math.Round(source.Height * scale)));
+
+				using var resized = source.Resize(info, new SKSamplingOptions(SKCubicResampler.Mitchell));
+				if (resized == null)
+				{
+					mLogger.LogWarning("Could not resize image {SourcePath} for media {MediaId}; skipping preview", sourcePath, mediaId);
+					return;
+				}
+
+				using var image = SKImage.FromBitmap(resized);
+				using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+				await using var output = File.Create(previewPath);
+				encoded.SaveTo(output);
 			}
 
 			media.PreviewFileName = previewFileName;
