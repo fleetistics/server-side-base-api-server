@@ -12,6 +12,12 @@ namespace api_server.Users
 
 		//Task<IReadOnlyList<UserDto>> GetActiveUsersAsync(CancellationToken cancellationToken);
 
+		/// <summary>Active users whose CompanyId is <paramref name="companyId"/>.</summary>
+		Task<IReadOnlyList<UserDto>> GetActiveCompanyUsersAsync(int companyId, CancellationToken cancellationToken);
+
+		/// <summary>The users with the given ids, whatever their status; ids that do not exist are skipped.</summary>
+		Task<IReadOnlyList<UserDto>> GetUsersByIdsAsync(IReadOnlyCollection<int> userIds, CancellationToken cancellationToken);
+
 		/// <summary>Null when the user does not exist.</summary>
 		//Task<UserDto?> UpdateUserAsync(int userId, UserDto data, CancellationToken cancellationToken);
 
@@ -55,6 +61,38 @@ namespace api_server.Users
                 mMediaUrls.ApplyAbsoluteUrl(dto.GovIDImage);
 				return dto;
             }
+		}
+
+		public async Task<IReadOnlyList<UserDto>> GetActiveCompanyUsersAsync(int companyId, CancellationToken cancellationToken)
+		{
+			var users = await mRepository.GetQueryable<User>(u => u.CompanyId == companyId && u.StatusId == UserStatus.Active)
+				.Include(u => u.AvatarImage)
+				.AsNoTracking()
+				.ToListAsync(cancellationToken);
+
+			return users.Select(u =>
+			{
+				var dto = new UserDto(u);
+				mMediaUrls.ApplyAbsoluteUrl(dto.AvatarImage);
+				return dto;
+			}).ToList();
+		}
+
+		public async Task<IReadOnlyList<UserDto>> GetUsersByIdsAsync(IReadOnlyCollection<int> userIds, CancellationToken cancellationToken)
+		{
+			if (userIds.Count == 0) return [];
+
+			var users = await mRepository.GetQueryable<User>(u => userIds.Contains(u.Id))
+				.Include(u => u.AvatarImage)
+				.AsNoTracking()
+				.ToListAsync(cancellationToken);
+
+			return users.Select(u =>
+			{
+				var dto = new UserDto(u);
+				mMediaUrls.ApplyAbsoluteUrl(dto.AvatarImage);
+				return dto;
+			}).ToList();
 		}
 
 		//public async Task<IReadOnlyList<UserDto>> GetActiveUsersAsync(CancellationToken cancellationToken)

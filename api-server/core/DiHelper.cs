@@ -37,6 +37,8 @@ namespace api_server.core
 				.AddSingleton<LoginThrottle>()
 				.AddScoped<IPasswordResetKeySender, NoDeliveryPasswordResetKeySender>()
 				.AddScoped<AuthService>()
+				.AddScoped<ISecuritySettingsService, SecuritySettingsService>()
+				.AddScoped<api_server.Companies.ICompanyAdminService, api_server.Companies.CompanyAdminService>()
 				.AddScoped<IMediaStorage, MediaStorageService>()
 				.AddScoped<IMediaInboundProcessor, MediaInboundProcessor>()
 				.AddScoped<IUserService, UserService>()

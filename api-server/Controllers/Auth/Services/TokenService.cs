@@ -23,6 +23,12 @@ namespace api_server.Auth
 
         private readonly JwtOptions _options = jwtOptions.Value;
 
+        // Secret behind the refresh-cookie MACs, derived from the signing key (so no extra deployment
+        // setting). Its derivation label keeps it distinct from the key the access tokens are signed with.
+        private readonly byte[] _refreshKey = HMACSHA256.HashData(
+            Encoding.UTF8.GetBytes(jwtOptions.Value.SigningKey),
+            Encoding.UTF8.GetBytes("refresh-rotation-key-v1"));
+
         public string CreateAccessToken(string userId, string sessionId, string? mobileGpsDeviceId = null, IEnumerable<string>? roles = null, string? teamId = null, string? companyId = null)
         {
             var claims = new List<Claim>
@@ -63,9 +69,50 @@ namespace api_server.Auth
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
-        // 256 bits of entropy, URL-safe. Used for both SessionKey (stable per
-        // login) and SessionRotationKey (replaced on every refresh).
+        // 256 bits of entropy, URL-safe. Used for the per-session key salt and for password reset keys.
         public static string GenerateKey() => Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(32));
+
+        // The refresh cookie value: "{sessionId}.{counter}.{mac}". The mac is
+        // HMAC-SHA256(server secret, "rt1|{sessionId}|{counter}|{salt}"), so the server can recompute the key of
+        // any counter of a session (it never has to store one) while nobody without the secret can forge it.
+        // Base64url never contains '.', so the split is unambiguous.
+        public string CreateRotationKey(int sessionId, int counter, string salt) =>
+            $"{sessionId}.{counter}.{Base64UrlEncoder.Encode(ComputeRotationMac(sessionId, counter, salt))}";
+
+        /// <summary>Splits a cookie value into its parts; false for anything that is not three well-formed parts.</summary>
+        public static bool TryParseRotationKey(string? value, out int sessionId, out int counter, out byte[] mac)
+        {
+            sessionId = 0;
+            counter = 0;
+            mac = [];
+            if (string.IsNullOrEmpty(value))
+            {
+                return false;
+            }
+            var parts = value.Split('.');
+            if (parts.Length != 3 ||
+                !int.TryParse(parts[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out sessionId) ||
+                !int.TryParse(parts[1], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out counter))
+            {
+                return false;
+            }
+            try
+            {
+                mac = Base64UrlEncoder.DecodeBytes(parts[2]);
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+            return mac.Length == HMACSHA256.HashSizeInBytes;
+        }
+
+        /// <summary>Constant-time check of a presented mac against the one the session's salt yields.</summary>
+        public bool IsValidRotationMac(int sessionId, int counter, string salt, byte[] presentedMac) =>
+            CryptographicOperations.FixedTimeEquals(ComputeRotationMac(sessionId, counter, salt), presentedMac);
+
+        private byte[] ComputeRotationMac(int sessionId, int counter, string salt) =>
+            HMACSHA256.HashData(_refreshKey, Encoding.UTF8.GetBytes($"rt1|{sessionId}|{counter}|{salt}"));
 
         // Scoped to /api/auth only: the SPA never needs to send this cookie to
         // ordinary API endpoints, so narrowing the path shrinks the exposure
@@ -77,7 +124,9 @@ namespace api_server.Auth
             return new CookieOptions
             {
                 HttpOnly = true,
-                Secure = isHttps,
+                // Always Secure unless a developer explicitly opted out (http dev / tests); the proxy-
+                // reported scheme alone must not decide, or a misconfigured proxy would ship the cookie in clear.
+                Secure = isHttps || !_options.AllowInsecureRefreshCookie,
                 SameSite = SameSiteMode.Lax,
                 Path = RefreshCookiePath,
                 Expires = persistentUntilUtc is { } until
@@ -89,6 +138,7 @@ namespace api_server.Auth
         public const string RefreshCookiePath = "/api/auth";
 
         public string RefreshCookieName => _options.RefreshCookieName;
+        public bool AllowInsecureRefreshCookie => _options.AllowInsecureRefreshCookie;
         public int RefreshTokenDays => _options.RefreshTokenDays;
         public TimeSpan SessionOnlyIdleLifetime => TimeSpan.FromHours(_options.SessionOnlyIdleHours);
         public TimeSpan SessionOnlyMaxLifetime => TimeSpan.FromDays(_options.SessionOnlyMaxDays);

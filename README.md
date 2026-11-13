@@ -50,11 +50,36 @@ tests set (JWT key, media folder, rate-limit override).
 ## Architecture notes (the template patterns)
 
 **Auth** — JWT bearer access tokens (in SPA memory) + rotating refresh key in an
-httpOnly cookie scoped to `/api/auth`. Rotation is single-use: replaying an old
-key fails and clears the cookie. `AuthAPIController` base class = `[Authorize]`
+httpOnly cookie scoped to `/api/auth`. The cookie value is `{sessionId}.{counter}.{mac}`:
+the mac is an HMAC-SHA256 the server derives from a secret (itself derived from
+`Jwt:SigningKey`) plus a random per-session salt, so nothing replayable is stored
+in `user_session` (only `Token_RotationCounter` and `Token_KeySalt`). The session is
+looked up by primary key and the mac checked first; a forged or guessed cookie
+changes nothing. Rotation is single-use: the counter goes up on every refresh. The
+key one rotation old still works inside `Jwt:RefreshReuseGraceSeconds` (benign
+races: two tabs, a retry) and gets the current key back; any other counter (an
+older key, or one ahead of the database after a restore) **revokes the session**
+(`UserSessionStatus.RevokedKeyReuse`, logged as a warning, counted by
+`app.auth.session_key_reuse_revocations`) and clears the cookie. Two refreshes
+racing on the same key are reconciled through the `LatestUpdate` concurrency token:
+the loser reloads the session and is answered as a duplicate.
+The cookie is always `Secure`; only `Jwt:AllowInsecureRefreshCookie=true` (dev over
+http, tests — never in `appsettings.json` or a deployed config) lifts that, and a
+non-Development host logs a warning when it is set. Behind a reverse proxy that is
+not on loopback, set `ForwardedHeaders:KnownProxies` (addresses) and/or
+`ForwardedHeaders:KnownNetworks` (CIDR) — otherwise every client shares the
+proxy's rate-limit partition. `AuthAPIController` base class = `[Authorize]`
 plus `UserId`/`SessionId` claims. Role policies live in `core/AuthPolicies.cs`.
 Login is rate-limited (fixed window per IP, `RateLimiting:Login:PermitLimit`,
 default 5/min).
+
+*Deploying the refresh-key change:* the migration expires every Active portal/app
+login session (sources 2 and 3), so those users sign in once; auto-device sessions
+are untouched. `user_session` is shared with `server-side-notifications` and
+`server-side-sp-api-server`: the model dropped `Token_SessionRotationKey` /
+`Token_PreviousSessionRotationKey` and added `Token_RotationCounter` (integer, default 0) /
+`Token_KeySalt` (text, default ''); a database owned by another repo needs those two
+columns added before it runs this model.
 
 **Controllers stay thin** — logic lives in services injected via interfaces
 (`AuthService`, `IMediaStorage`/`MediaStorageService`). Controllers translate

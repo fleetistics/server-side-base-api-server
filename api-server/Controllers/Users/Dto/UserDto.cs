@@ -18,6 +18,9 @@ namespace api_server.Users
 			FullName = user.FullName;
 			Phone = user.Phone;
 			Email = user.Email;
+			IsMfaEnabled = user.IsMfaEnabled;
+			IsEmailVerified = user.IsEmailVerified;
+			IsPhoneVerified = user.IsPhoneVerified;
 			if (user.AvatarImage != null)
 			{
                 AvatarImage = new UploadedMediaDto(user.AvatarImage);
@@ -36,6 +39,9 @@ namespace api_server.Users
 		public string? FullName { get; set; } = default!;
 		public string? Phone { get; set; }
 		public string? Email { get; set; }
+		public bool? IsMfaEnabled { get; set; }
+		public bool? IsEmailVerified { get; set; }
+		public bool? IsPhoneVerified { get; set; }
         public UploadedMediaDto? AvatarImage { get; set; }
         public UploadedMediaDto? GovIDImage { get; set; }
     }

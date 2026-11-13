@@ -1,6 +1,6 @@
 <Solution>
   <Folder Name="/deploy/">
-    <File Path="deploy.settings.json" />
+    <File Path="deploy/deploy.settings.json" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="D:/work/clients/Fleetistics/new-gen/server-side-base-api-server/tests/api-server.IntegrationTests/api-server.IntegrationTests.csproj" />

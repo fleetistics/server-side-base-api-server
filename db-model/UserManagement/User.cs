@@ -20,9 +20,11 @@ namespace db_model.UserManagement
 
 
         public string? Password { get; set; } = default!;
-        //public bool? IsPrivateMode { get; set; }
+        public bool? IsMfaEnabled { get; set; }
+        public bool? IsEmailVerified { get; set; }
+        public bool? IsPhoneVerified { get; set; }
 
-        
+
         public string? Phone { get; set; }
         public string? Email { get; set; }
         public int? AvatarImageId { get; set; }

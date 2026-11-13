@@ -18,5 +18,9 @@ namespace api_server.Auth
         // (two tabs, an app relaunch, a retried request) without weakening detection
         // of a genuinely stale/stolen key replayed well after the legitimate holder moved on.
         public int RefreshReuseGraceSeconds { get; set; } = 10;
+
+        // Development/test escape hatch: lets the refresh cookie be issued without the Secure flag over
+        // plain http. Never set it in appsettings.json or a deployed environment's config.
+        public bool AllowInsecureRefreshCookie { get; set; } = false;
     }
 }

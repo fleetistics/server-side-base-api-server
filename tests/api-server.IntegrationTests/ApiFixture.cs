@@ -87,6 +87,9 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("RateLimiting:Register:PermitLimit", "100000");
         builder.UseSetting("RateLimiting:PasswordResetRequest:PermitLimit", "100000");
         builder.UseSetting("RateLimiting:PasswordReset:PermitLimit", "100000");
+        // Tests talk plain http, and the refresh cookie is otherwise always Secure. As a host setting
+        // so a test can switch it off again through WithWebHostBuilder(UseSetting).
+        builder.UseSetting("Jwt:AllowInsecureRefreshCookie", "true");
         // The production minimum response time would add a second to every reset request; the
         // test that covers it turns it back on.
         builder.UseSetting("Auth:PasswordResetMinResponseMilliseconds", "0");

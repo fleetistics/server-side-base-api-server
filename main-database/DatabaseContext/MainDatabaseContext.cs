@@ -32,6 +32,8 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			createFleetModel(modelBuilder);
 			createTeamModel(modelBuilder);
 			createMessageModel(modelBuilder);
+			createCompaniesModel(modelBuilder);
+			createAuthModel(modelBuilder);
 		}
 	}
 }
