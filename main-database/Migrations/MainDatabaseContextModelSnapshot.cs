@@ -25,6 +25,44 @@ namespace main_database.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("db_model.Auth.SettingsEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId")
+                        .IsUnique()
+                        .HasFilter("\"CompanyId\" IS NOT NULL");
+
+                    b.ToTable("settings_entry", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            LatestUpdate = new DateTime(2026, 11, 12, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Value = "{\"password\":{\"minLength\":12,\"requireUpperAndLowerCase\":true,\"requireNumber\":true,\"requireSymbol\":true,\"disallowNameOrEmail\":true,\"screenAgainstBreachedLists\":true,\"resetFrequencyDays\":90,\"historyCount\":5,\"minAgeDays\":1},\"twoFactor\":{\"required\":true,\"appliesTo\":1,\"allowAuthenticatorApp\":true,\"allowEmailOneTimeCode\":false,\"allowBackupCodes\":true,\"allowSmsMessage\":true,\"allowSecurityKeyPasskey\":true,\"enrollmentGraceDays\":7,\"rememberDeviceDays\":30},\"emailDomain\":{\"domainOnlyAccounts\":true,\"justInTimeProvisioning\":true,\"scimDirectorySync\":false},\"sessions\":{\"idleTimeoutMinutes\":30,\"maxSessionHours\":12,\"concurrentSessions\":3,\"lockoutAttempts\":5,\"lockoutMinutes\":15,\"stepUpReauthentication\":true,\"ipAllowlistEnabled\":false,\"geoBlockingEnabled\":true,\"deviceTrustForAdminRoles\":true,\"captchaOnRepeatedFailures\":true,\"captchaAfterFailedAttempts\":3}}"
+                        });
+                });
+
             modelBuilder.Entity("db_model.Companies.Company", b =>
                 {
                     b.Property<int>("Id")
@@ -43,9 +81,366 @@ namespace main_database.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
                     b.HasKey("Id");
 
                     b.ToTable("company", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.CompanyStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("company_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.PermissionRole", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("IsDefault")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.ToTable("permission_role", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.User2Company", b =>
+                {
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<short>("JoinTypeId")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("JoinedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("PermissionRoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.HasKey("CompanyId", "UserId");
+
+                    b.HasIndex("PermissionRoleId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user2company", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.User2CompanyJoinType", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user2company_join_type", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.User2CompanyStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user2company_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.User2Group", b =>
+                {
+                    b.Property<int>("GroupId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("GroupId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("CompanyId", "UserId");
+
+                    b.ToTable("user2group", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.UserGroup", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<short>("GroupColor")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.ToTable("user_group", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.UserJoinInvitation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CreatedByUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreationDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool?>("DoesNotRequireAdminApproval")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ExpirationDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("GroupId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool?>("IsAutoAppRegistrationAllowed")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("IsPersonal")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("JoinCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("JoinQrCodeImageName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("PermissionRoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("GroupId");
+
+                    b.HasIndex("JoinCode")
+                        .IsUnique();
+
+                    b.HasIndex("PermissionRoleId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("user_join_invitation", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.UserJoinInvitationStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_join_invitation_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.UserJoinRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreationDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("HandledByCompanyUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UserJoinInvitationId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserJoinInvitationId");
+
+                    b.HasIndex("CompanyId", "StatusId");
+
+                    b.ToTable("user_join_request", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.UserJoinRequestStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_join_request_status", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Gps.GpsAssetType", b =>
@@ -1186,6 +1581,15 @@ namespace main_database.Migrations
                     b.Property<int?>("GovIDImageId")
                         .HasColumnType("integer");
 
+                    b.Property<bool?>("IsEmailVerified")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("IsMfaEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("IsPhoneVerified")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -1502,16 +1906,15 @@ namespace main_database.Migrations
                             b1.Property<bool>("IsPersistent")
                                 .HasColumnType("boolean");
 
+                            b1.Property<string>("KeySalt")
+                                .IsRequired()
+                                .HasColumnType("text");
+
                             b1.Property<DateTime>("LatestRefreshTime")
                                 .HasColumnType("timestamp with time zone");
 
-                            b1.Property<string>("PreviousSessionRotationKey")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("SessionRotationKey")
-                                .IsRequired()
-                                .HasColumnType("text");
+                            b1.Property<int>("RotationCounter")
+                                .HasColumnType("integer");
                         });
 
                     b.HasKey("Id");
@@ -1840,6 +2243,124 @@ namespace main_database.Migrations
                         .HasDatabaseName("IX_fcm_sent_NotificationId_UserId");
 
                     b.ToTable("fcm_sent", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Auth.SettingsEntry", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("db_model.Companies.PermissionRole", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("db_model.Companies.User2Company", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.Companies.PermissionRole", null)
+                        .WithMany()
+                        .HasForeignKey("PermissionRoleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.Companies.User2Group", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("db_model.Companies.UserGroup", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.Companies.UserGroup", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.Companies.UserJoinInvitation", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("db_model.Companies.UserGroup", null)
+                        .WithMany()
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("db_model.Companies.PermissionRole", null)
+                        .WithMany()
+                        .HasForeignKey("PermissionRoleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("db_model.Companies.UserJoinRequest", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.Companies.UserJoinInvitation", null)
+                        .WithMany()
+                        .HasForeignKey("UserJoinInvitationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("db_model.Gps.GpsDevice", b =>

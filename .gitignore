@@ -32,3 +32,4 @@ _ReSharper*/
 #Nuget packages folder
 packages/
 /api-server/local_configs/local_server.json
+/api-server/code-version.json

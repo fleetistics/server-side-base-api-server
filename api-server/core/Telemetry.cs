@@ -25,6 +25,10 @@ namespace api_server.core
 		public static readonly Counter<long> LoginLockouts =
 			Meter.CreateCounter<long>("app.auth.login_lockouts", description: "Accounts locked after repeated failed logins");
 
+		/// <summary>Counts sessions revoked because a superseded or impossible refresh key was presented (possible cookie theft).</summary>
+		public static readonly Counter<long> SessionKeyReuseRevocations =
+			Meter.CreateCounter<long>("app.auth.session_key_reuse_revocations", description: "Sessions revoked after a refresh key was replayed");
+
 		/// <summary>Decompressed size of client-log uploads (the endpoint itself is untraced).</summary>
 		public static readonly Histogram<long> ClientLogPayloadBytes =
 			Meter.CreateHistogram<long>("app.client_log.payload_size", unit: "By",

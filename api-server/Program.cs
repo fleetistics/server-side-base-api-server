@@ -57,6 +57,7 @@ else
         }
     }
 }
+builder.Configuration.AddJsonFile(directoryName + "/code-version.json", optional: true, reloadOnChange: false);
 
 try
 {
@@ -172,13 +173,24 @@ try
         options.ReportApiVersions = true;
     });
 
-    // Honors X-Forwarded-For/-Proto from a reverse proxy on the same host (the
-    // default trusted proxy is loopback; add KnownProxies/KnownNetworks via code
-    // here when the proxy lives elsewhere). Rate limiting and HTTPS detection
-    // depend on this being correct.
+    // Honors X-Forwarded-For/-Proto from a reverse proxy. Only loopback is trusted by default; when the
+    // proxy lives elsewhere, list it in configuration: ForwardedHeaders:KnownProxies (addresses) and
+    // ForwardedHeaders:KnownNetworks (CIDR, e.g. "10.0.0.0/8"). Without that, behind a non-loopback proxy
+    // every client shares the proxy's address (one rate-limit partition) and Request.IsHttps is false.
+    // Rate limiting and HTTPS detection depend on this being correct.
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
         options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+        var forwarded = builder.Configuration.GetSection("ForwardedHeaders");
+        foreach (var proxy in forwarded.GetSection("KnownProxies").Get<string[]>() ?? [])
+        {
+            options.KnownProxies.Add(System.Net.IPAddress.Parse(proxy));
+        }
+        foreach (var network in forwarded.GetSection("KnownNetworks").Get<string[]>() ?? [])
+        {
+            options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+        }
     });
 
     builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
@@ -212,8 +224,8 @@ try
             // token retrieval already handles that, so no cookie lookup here.
             options.Events = new JwtBearerEvents
             {
-                // Refresh tokens are signed with the same key, so reject one here
-                // if it's ever presented as an access token (e.g. mixup).
+                // Only tokens issued as access tokens (token_use=access) are accepted; anything
+                // else signed with this key is refused here (e.g. mixup).
                 OnTokenValidated = context =>
                 {
                     if (context.Principal?.FindFirst("token_use")?.Value != "access")
@@ -329,6 +341,11 @@ try
         migrationScope.ServiceProvider.GetRequiredService<MainDatabaseContext>().Database.Migrate();
     }
 
+    if (!app.Environment.IsDevelopment() && app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<JwtOptions>>().Value.AllowInsecureRefreshCookie)
+    {
+        app.Logger.LogWarning("Jwt:AllowInsecureRefreshCookie is enabled in the {Environment} environment: the refresh cookie may be sent without the Secure flag. Only development and tests should do this.", app.Environment.EnvironmentName);
+    }
+
     app.UseForwardedHeaders();
     app.UseExceptionHandler();
     // One structured summary line per request (method, path, status, elapsed).
@@ -381,8 +398,10 @@ try
     {
         Log.Warning("{Key} is true: /api/test/email can send mail from the configured email sender account to any address for any logged-in user. Keep it off everywhere except a dev machine.", TestEmailEnabledAttribute.ConfigKey);
     }
+    var codeVersion = builder.Configuration.GetSection("CodeVersion").Get<string>() ?? "unknown";
+    var gitHash = builder.Configuration.GetSection("GitHash").Get<string>() ?? "unknown";
 
-    Log.Information("Application starting up...");
+    Log.Information($"Application CodeVersion: {codeVersion}, GitHash: {gitHash} starting up... ");
     app.Run();
 
 

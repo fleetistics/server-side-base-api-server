@@ -93,14 +93,14 @@ namespace api_server.Controllers.Auth
         // Creates a JustCreated user and delivers a password reset key; the account becomes
         // Active when the user sets their password through /api/auth/reset-password.
         // /api/auth/register is kept as an alias of the portal registration for existing clients.
-        [HttpPost("/api/auth/portal_register")]
-        [HttpPost("/api/auth/register")]
+        [HttpPost("/api/user/portal_register")]
+        [HttpPost("/api/user/register")]
         [AllowAnonymous]
         [EnableRateLimiting("register")] // own bucket: must not eat into the login budget on a shared IP
         public Task<IActionResult> PortalRegister([FromBody] RegisterUserData request, CancellationToken cancellationToken) =>
             RegisterCommon(request, UserSource.Registration_Portal, cancellationToken);
 
-        [HttpPost("/api/auth/app_register")]
+        [HttpPost("/api/user/app_register")]
         [AllowAnonymous]
         [EnableRateLimiting("register")] // same bucket as the portal registration: one budget per client IP
         public Task<IActionResult> AppRegister([FromBody] RegisterUserData request, CancellationToken cancellationToken) =>
@@ -129,7 +129,7 @@ namespace api_server.Controllers.Auth
 
         // Always 204, whether or not a matching user exists — the response must not reveal
         // which accounts are registered. The key is delivered out-of-band, never returned.
-        [HttpPost("/api/auth/request-password-reset")]
+        [HttpPost("/api/user/request-password-reset")]
         [AllowAnonymous]
         [EnableRateLimiting("password-reset-request")] // triggers outbound e-mail; per-account cooldown is in AuthService
         public async Task<IActionResult> RequestPasswordReset([FromBody] RequestPasswordResetData request, CancellationToken cancellationToken)
@@ -138,7 +138,7 @@ namespace api_server.Controllers.Auth
             return NoContent();
         }
 
-        [HttpPost("/api/auth/reset-password")]
+        [HttpPost("/api/user/reset-password")]
         [AllowAnonymous]
         [EnableRateLimiting("password-reset")] // guessing guard for reset keys
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordData request, CancellationToken cancellationToken)
@@ -166,23 +166,23 @@ namespace api_server.Controllers.Auth
         [AllowAnonymous]
         public async Task<IActionResult> Logout(CancellationToken cancellationToken)
         {
-            await authService.LogoutAsync(ReadRotationKey(), cancellationToken);
+            await authService.LogoutAsync(ReadRotationKey(), ReadTokenSessionId(), cancellationToken);
             ClearRefreshCookie();
             return Ok();
         }
 
-        // [Authorize] here is inherited from AuthAPIController's class-level attribute
-        // (every other action opts out via [AllowAnonymous]) — this is the one action
-        // that actually needs it.
-        [HttpGet("/api/auth/me")]
-        public IActionResult Me()
-        {
-            return Ok(new
-            {
-                userId = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value,
-                sessionId = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sid)?.Value,
-            });
-        }
+        //// [Authorize] here is inherited from AuthAPIController's class-level attribute
+        //// (every other action opts out via [AllowAnonymous]) — this is the one action
+        //// that actually needs it.
+        //[HttpGet("/api/auth/me")]
+        //public IActionResult Me()
+        //{
+        //    return Ok(new
+        //    {
+        //        userId = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value,
+        //        sessionId = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sid)?.Value,
+        //    });
+        //}
 
         private IActionResult HandleSessionResult(AuthResult result, bool returnTokenOnly)
         {
@@ -203,12 +203,16 @@ namespace api_server.Controllers.Auth
         private string? ReadRotationKey() =>
             Request.Cookies.TryGetValue(tokenService.RefreshCookieName, out var key) ? key : null;
 
+        // The sid of a valid, unexpired access token; null when the caller sent none (the cookie then decides alone).
+        private int? ReadTokenSessionId() =>
+            int.TryParse(User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sid)?.Value, out var sessionId) ? sessionId : null;
+
         private void SetRefreshCookie(AuthResult result) =>
             Response.Cookies.Append(tokenService.RefreshCookieName, result.RotationKey!,
                 tokenService.BuildRefreshCookieOptions(Request.IsHttps, result.CookieExpiresUtc));
 
         private void ClearRefreshCookie() =>
             Response.Cookies.Delete(tokenService.RefreshCookieName,
-                new CookieOptions { Path = TokenService.RefreshCookiePath });
+                tokenService.BuildRefreshCookieOptions(Request.IsHttps, null)); // same attributes as when it was set
     }
 }

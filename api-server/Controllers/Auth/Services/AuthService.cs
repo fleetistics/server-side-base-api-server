@@ -155,8 +155,8 @@ namespace api_server.Auth
                 SessionSourceId = userSessionSourceId,
                 Token = new SessionTokenInfo
                 {
-                    //SessionKey = TokenService.GenerateKey(),
-                    SessionRotationKey = TokenService.GenerateKey(),
+                    KeySalt = TokenService.GenerateKey(),
+                    RotationCounter = 0,
                     IsPersistent = rememberMe,
                     CreationTime = now,
                     ExpirationTime = rememberMe
@@ -369,33 +369,65 @@ namespace api_server.Auth
             return await RotateAsync(session, user!.CompanyId, activity, cancellationToken);
         }
 
-        public async Task LogoutAsync(string? rotationKey, CancellationToken cancellationToken)
+        /// <param name="sessionId">The sid of a valid access token, when the caller sent one. It is checked first (the token is signed,
+        /// so it identifies the session even after its rotation counter moved on); the refresh cookie is the fallback.
+        /// The cookie's mac must be valid for the session, but its counter does not matter: ending a session is the safe direction.</param>
+        public async Task LogoutAsync(string? rotationKey, int? sessionId, CancellationToken cancellationToken)
         {
-            if (string.IsNullOrEmpty(rotationKey))
+            UserSession? session = null;
+            if (sessionId is int sid)
             {
-                return;
+                session = await FindActiveSessionByIdAsync(sid, cancellationToken);
             }
-
-            var session = await FindActiveSessionAsync(rotationKey, cancellationToken);
+            if (session is null && TokenService.TryParseRotationKey(rotationKey, out var cookieSessionId, out var cookieCounter, out var mac))
+            {
+                var candidate = await FindActiveSessionByIdAsync(cookieSessionId, cancellationToken);
+                if (candidate is not null && HasValidMac(candidate, cookieSessionId, cookieCounter, mac))
+                {
+                    session = candidate;
+                }
+            }
             if (session is not null)
             {
-                session.StatusId = UserSessionStatus.LoggedOutByUser;
-                if (session.MobileGpsDeviceId is not null)
-                {
-                    if( !(await repository.GetQueryable<UserSession>(s => s.Id != session.Id && s.MobileGpsDeviceId == session.MobileGpsDeviceId && s.StatusId == UserSessionStatus.Active).AnyAsync(cancellationToken)))
-                    {
-                        var gpsDevice = await repository.GetQueryable<GpsDevice>(g => g.Id == session.MobileGpsDeviceId.Value && g.StatusId == GpsDeviceStatus.Active).FirstOrDefaultAsync(cancellationToken);
-                        if (gpsDevice != null)
-                        {
-                            gpsDevice.StatusId = GpsDeviceStatus.MobileLogOutInactive;
-                        }
-                    }
-                }
-                await repository.SaveAsync(cancellationToken);
+                await EndSessionAsync(session, UserSessionStatus.LoggedOutByUser, cancellationToken);
                 logger.LogInformation("Session {SessionId} logged out", session.Id);
             }
         }
 
+        // Closes the session with the given status; a phone that no other active session uses is marked logged out.
+        private async Task EndSessionAsync(UserSession session, short statusId, CancellationToken cancellationToken)
+        {
+            session.StatusId = statusId;
+            if (session.MobileGpsDeviceId is not null)
+            {
+                if (!(await repository.GetQueryable<UserSession>(s => s.Id != session.Id && s.MobileGpsDeviceId == session.MobileGpsDeviceId && s.StatusId == UserSessionStatus.Active).AnyAsync(cancellationToken)))
+                {
+                    var gpsDevice = await repository.GetQueryable<GpsDevice>(g => g.Id == session.MobileGpsDeviceId.Value && g.StatusId == GpsDeviceStatus.Active).FirstOrDefaultAsync(cancellationToken);
+                    if (gpsDevice != null)
+                    {
+                        gpsDevice.StatusId = GpsDeviceStatus.MobileLogOutInactive;
+                    }
+                }
+            }
+            await repository.SaveAsync(cancellationToken);
+        }
+
+        private Task<UserSession?> FindActiveSessionByIdAsync(int sessionId, CancellationToken cancellationToken) =>
+            repository
+                .GetQueryable<UserSession>(s => s.Id == sessionId && s.StatusId == UserSessionStatus.Active)
+                .FirstOrDefaultAsync(cancellationToken);
+
+        // Auto-device sessions have no salt and never use the cookie, so none can ever pass here.
+        private bool HasValidMac(UserSession session, int presentedSessionId, int presentedCounter, byte[] presentedMac) =>
+            !string.IsNullOrEmpty(session.Token.KeySalt) &&
+            tokenService.IsValidRotationMac(presentedSessionId, presentedCounter, session.Token.KeySalt, presentedMac);
+
+        /// <summary>
+        /// Cookie = "{sessionId}.{counter}.{mac}". The session is found by primary key and the mac is checked
+        /// before anything else happens to it, so a guessed or forged cookie can neither log anyone out nor
+        /// reach another session. A valid mac with an old or impossible counter means the key was replayed
+        /// (or the database lost rotations): the session is revoked.
+        /// </summary>
         public async Task<AuthResult> RefreshLoginAsync(string? rotationKey, ClientSideInfo clientSideInfo, CancellationToken cancellationToken)
         {
             using var activity = Telemetry.Source.StartActivity("auth.login.refresh_session");
@@ -406,9 +438,48 @@ namespace api_server.Auth
                 return new AuthResult(AuthStatus.Unauthenticated);
             }
 
-            var session = await FindActiveSessionAsync(rotationKey, cancellationToken);
-            if (session is not null)
+            if (!TokenService.TryParseRotationKey(rotationKey, out var sessionId, out var counter, out var mac))
             {
+                activity?.SetStatus(ActivityStatusCode.Error, "malformed rotation key");
+                return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
+            }
+
+            var session = await repository
+                .GetQueryable<UserSession>(s => s.Id == sessionId)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (session is null || !HasValidMac(session, sessionId, counter, mac))
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "rotation key not valid");
+                logger.LogWarning("Session rotation rejected: refresh key for session {SessionId} is not valid", sessionId);
+                return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
+            }
+
+            activity?.SetTag("app.session.id", session.Id);
+            return await EvaluateRefreshAsync(session, counter, clientSideInfo, activity, afterConflict: false, cancellationToken);
+        }
+
+        // The presented key is genuine (valid mac); what it means depends on how its counter compares with the session's.
+        // afterConflict: the row was just reloaded because a concurrent save won, so rotating again is not attempted.
+        private async Task<AuthResult> EvaluateRefreshAsync(UserSession session, int presentedCounter, ClientSideInfo clientSideInfo, Activity? activity, bool afterConflict, CancellationToken cancellationToken)
+        {
+            if (session.StatusId != UserSessionStatus.Active)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "session not active");
+                return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
+            }
+
+            var now = DateTime.UtcNow;
+            var current = session.Token.RotationCounter;
+
+            if (presentedCounter == current)
+            {
+                if (afterConflict)
+                {
+                    // Reloaded and still unrotated: something else touched the row, nothing rotated it. Not a
+                    // verdict on the key, so the cookie stays and the client simply tries again.
+                    return new AuthResult(AuthStatus.Unauthenticated);
+                }
+
                 var user = await FindActiveUserAsync(session.UserId, cancellationToken);
                 if (user is null)
                 {
@@ -417,33 +488,55 @@ namespace api_server.Auth
                     return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
                 }
                 refreshSessionClientInfo(clientSideInfo, session.ClientInfo);
-                return await RotateAsync(session, user.CompanyId, activity, cancellationToken);
+                var rotated = await TryRotateAsync(session, user.CompanyId, activity, cancellationToken);
+                // null: a concurrent refresh with the same key won the save. The row was reloaded; the loser now
+                // holds the previous counter, which the duplicate path below answers with the winner's key.
+                return rotated ?? await EvaluateRefreshAsync(session, presentedCounter, clientSideInfo, activity, afterConflict: true, cancellationToken);
             }
 
-            // Not the current key. If it's the one we JUST superseded (inside the
-            // reuse-grace window), this is almost certainly a harmless race — two tabs,
-            // an app relaunch, a retried request — not theft: hand back the session's
-            // current state without rotating again. Past the grace window, an old key
-            // showing up is the real signal — the legitimate holder already moved on,
-            // so this is a stolen copy being replayed.
-            var superseded = await FindRecentlySupersededSessionAsync(rotationKey, cancellationToken);
-            if (superseded is not null && superseded.Token.ExpirationTime > DateTime.UtcNow)
+            // The key we JUST superseded, inside the reuse-grace window: almost certainly a harmless race
+            // (two tabs, an app relaunch, a retried request). Hand back the current state without rotating.
+            if (presentedCounter == current - 1
+                && session.Token.LatestRefreshTime >= now - tokenService.RefreshReuseGraceWindow
+                && session.Token.ExpirationTime > now)
             {
-                var supersededUser = await FindActiveUserAsync(superseded.UserId, cancellationToken);
-                if (supersededUser is not null)
+                var user = await FindActiveUserAsync(session.UserId, cancellationToken);
+                if (user is null)
                 {
-                    activity?.SetTag("app.session.reuse_grace_window_hit", true);
-                    refreshSessionClientInfo(clientSideInfo, session.ClientInfo);
-                    return await BuildSuccessAsync(superseded, supersededUser.CompanyId, cancellationToken);
+                    activity?.SetStatus(ActivityStatusCode.Error, "user not active");
+                    return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
                 }
+                activity?.SetTag("app.session.reuse_grace_window_hit", true);
+                return await BuildSuccessAsync(session, user.CompanyId, cancellationToken);
             }
-            
-            activity?.SetStatus(ActivityStatusCode.Error, "rotation key not active");
-            logger.LogWarning("Session rotation rejected: rotation key not active");
+
+            // Anything else: an older key (the legitimate holder already moved on, so this is a copy being
+            // replayed) or a counter ahead of the database (rotations were lost, an old key is current again).
+            // Either way the cookie can no longer be trusted: end the session.
+            return await RevokeForKeyReuseAsync(session, presentedCounter, activity, cancellationToken);
+        }
+
+        private async Task<AuthResult> RevokeForKeyReuseAsync(UserSession session, int presentedCounter, Activity? activity, CancellationToken cancellationToken)
+        {
+            Telemetry.SessionKeyReuseRevocations.Add(1);
+            activity?.SetStatus(ActivityStatusCode.Error, "refresh key reused");
+            logger.LogWarning("Session {SessionId} of user {UserId} revoked: refresh key with counter {PresentedCounter} replayed (current counter {CurrentCounter})",
+                session.Id, session.UserId, presentedCounter, session.Token.RotationCounter);
+            try
+            {
+                await EndSessionAsync(session, UserSessionStatus.RevokedKeyReuse, cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // Someone else changed the session in the same instant (a logout, most likely); it is
+                // ending either way, and the caller is refused regardless.
+                logger.LogInformation("Revocation of session {SessionId} raced with another update", session.Id);
+            }
             return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
         }
 
-        private async Task<AuthResult> RotateAsync(UserSession session, int? companyId, Activity? activity, CancellationToken cancellationToken)
+        // Returns null when a concurrent save won (the row is then reloaded from the database), otherwise the outcome.
+        private async Task<AuthResult?> TryRotateAsync(UserSession session, int? companyId, Activity? activity, CancellationToken cancellationToken)
         {
             var now = DateTime.UtcNow;
             if (session.Token.ExpirationTime <= now)
@@ -456,19 +549,33 @@ namespace api_server.Auth
                 return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
             }
 
-            // Rotate: the old key still works for the reuse-grace window, then it's dead for good.
-            session.Token.PreviousSessionRotationKey = session.Token.SessionRotationKey;
-            session.Token.SessionRotationKey = TokenService.GenerateKey();
+            // Rotate: the previous counter's key still works for the reuse-grace window, then it's dead for good.
+            session.Token.RotationCounter++;
             session.Token.LatestRefreshTime = now;
             // Idle sessions live on while they are used; persistent ones keep their fixed expiry.
             if (!session.Token.IsPersistent)
             {
                 session.Token.ExpirationTime = IdleExpiration(now, session.Token.CreationTime);
             }
-            await repository.SaveAsync(cancellationToken);
+            try
+            {
+                await repository.SaveAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // LatestUpdate (stamped by a DB trigger) changed under us: another request saved this session first.
+                logger.LogInformation("Session {SessionId} rotation lost a race with a concurrent update; reloading", session.Id);
+                await repository.DbContext.Entry(session).ReloadAsync(cancellationToken);
+                return null;
+            }
 
             return await BuildSuccessAsync(session, companyId, cancellationToken);
         }
+
+        // The auto-device refresh has no cookie to reconcile: if it loses the race it just answers from the reloaded row.
+        private async Task<AuthResult> RotateAsync(UserSession session, int? companyId, Activity? activity, CancellationToken cancellationToken) =>
+            await TryRotateAsync(session, companyId, activity, cancellationToken)
+                ?? await BuildSuccessAsync(session, companyId, cancellationToken);
 
         // now + idle window, but never past the absolute cap counted from login.
         private DateTime IdleExpiration(DateTime now, DateTime creationTime)
@@ -478,27 +585,11 @@ namespace api_server.Auth
             return idleEnd < maxEnd ? idleEnd : maxEnd;
         }
 
-        private Task<UserSession?> FindActiveSessionAsync(string rotationKey, CancellationToken cancellationToken) =>
-            repository
-                .GetQueryable<UserSession>(s => s.Token.SessionRotationKey == rotationKey && s.StatusId == UserSessionStatus.Active)
-                .FirstOrDefaultAsync(cancellationToken);
-
         // A deactivated user's sessions must stop refreshing even though the sessions themselves are still Active.
         private Task<User?> FindActiveUserAsync(int userId, CancellationToken cancellationToken) =>
             repository
                 .GetQueryable<User>(u => u.Id == userId && u.StatusId == UserStatus.Active)
                 .FirstOrDefaultAsync(cancellationToken);
-
-        private Task<UserSession?> FindRecentlySupersededSessionAsync(string rotationKey, CancellationToken cancellationToken)
-        {
-            var cutoff = DateTime.UtcNow - tokenService.RefreshReuseGraceWindow;
-            return repository
-                .GetQueryable<UserSession>(s =>
-                    s.Token.PreviousSessionRotationKey == rotationKey &&
-                    s.StatusId == UserSessionStatus.Active &&
-                    s.Token.LatestRefreshTime >= cutoff)
-                .FirstOrDefaultAsync(cancellationToken);
-        }
 
         private async Task<AuthResult> BuildSuccessAsync(UserSession session, int? companyId, CancellationToken cancellationToken)
         {
@@ -512,7 +603,7 @@ namespace api_server.Auth
                     UserId = session.UserId,
                     SessionId = session.Id,
                 },
-                session.Token.SessionRotationKey,
+                tokenService.CreateRotationKey(session.Id, session.Token.RotationCounter, session.Token.KeySalt),
                 CookieExpiresUtc: session.Token.IsPersistent ? session.Token.ExpirationTime : null);
         }
 
