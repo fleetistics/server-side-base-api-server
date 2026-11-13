@@ -127,11 +127,11 @@ namespace db_model.Map
         [JsonPropertyName(StateKeys.Altitude)]
         public StateValue<double>? Altitude { get; set; }
 
-        /// <summary>Altitude of the newest position, in metres above sea level, as the device reports it.</summary>
+        /// <summary>Speed of the newest position, in km/h (the same unit as <see cref="GpsDeviceMapState.Speed"/>).</summary>
         [JsonPropertyName(StateKeys.Speed)]
         public StateValue<float>? Speed { get; set; }
 
-        /// <summary>Altitude of the newest position, in metres above sea level, as the device reports it.</summary>
+        /// <summary>Heading of the newest position, in degrees (the same as <see cref="GpsDeviceMapState.Dir"/>).</summary>
         [JsonPropertyName(StateKeys.Direction)]
         public StateValue<short>? Direction { get; set; }
 
@@ -209,6 +209,8 @@ namespace db_model.Map
                 case StateKeys.FuelIdleTotal: return tryRead<double>(node, v => data.FuelIdleTotal = v);
                 case StateKeys.SeatBelt: return tryRead<double>(node, v => data.SeatBelt = v);
                 case StateKeys.Altitude: return tryRead<double>(node, v => data.Altitude = v);
+                case StateKeys.Speed: return tryRead<float>(node, v => data.Speed = v);
+                case StateKeys.Direction: return tryRead<short>(node, v => data.Direction = v);
                 default: return false;
             }
         }

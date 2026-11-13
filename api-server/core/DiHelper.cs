@@ -13,6 +13,7 @@ using exs.dbContextCommons;
 using mf.aiApi.mainDatabase.DatabaseContext;
 using exs.notifications_service;
 using exs.notifications_service.Sender;
+using exs.notifications_service.Templates;
 
 namespace api_server.core
 {
@@ -27,6 +28,8 @@ namespace api_server.core
 				.AddUserSessionFcmHooks()
 				// Only used when NotificationService:EmailTransport is "Sender"; the address is the one on the user record.
 				.AddEmailDestinationResolver<api_server.Services.Notifications.UserEmailDestinationResolver>()
+				// The ITemplateModel classes of this assembly (ResetPasswordData, ...), whose wording is read from notification_template.
+				.AddNotificationTemplates([typeof(api_server.Services.Notifications.ResetPasswordData).Assembly], configuration)
 				.Configure<MediaSettings>(configuration.GetSection("Media"))
 				.Configure<ClientLogRetentionOptions>(configuration.GetSection("ClientLog"))
 				.Configure<AuthOptions>(configuration.GetSection("Auth"))

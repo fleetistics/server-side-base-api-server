@@ -1,10 +1,13 @@
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using api_server.Controllers.Base;
 using api_server.Controllers.Test.Dto;
+using api_server.Services.Notifications;
 using exs.Database.Commons.Interfaces;
 using exs.notifications_contracts;
 using exs.notifications_model.Outbox;
 using exs.notifications_service.Interfaces;
+using exs.notifications_service.Templates;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -70,6 +73,68 @@ namespace api_server.Controllers.Test
 			await mRepository.SaveAsync(cancellationToken);
 
 			//mLogger.LogInformation("Test email {Reference} queued by user {UserId}", reference, UserId);
+			return Accepted(new EmailTestAcceptedDto { Reference = reference });
+		}
+
+		/// <summary>
+		/// Sends the password-reset email the way the real flow will: from the "password-reset" template (<see cref="ResetPasswordData"/>),
+		/// through INotificationSender.CreateEmailFromTemplateAsync. The key in the link is made up and opens nothing. The answer
+		/// is the same as for POST /api/test/email, so GET /api/test/email/{reference} shows how it went. Needs a row in
+		/// notification_template with the key "password-reset" (at least for the default language).
+		/// </summary>
+		[AllowAnonymous]
+		[HttpPost("/api/test/email/reset-password")]
+		[ProducesResponseType(typeof(EmailTestAcceptedDto), StatusCodes.Status202Accepted)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+		public async Task<IActionResult> SendResetPassword([FromBody] ResetPasswordEmailTestRequestDto request, CancellationToken cancellationToken)
+		{
+			var reference = Guid.NewGuid().ToString("N");
+			var userName = blankToNull(request.UserName) ?? "Test User";
+			var minutes = request.ExpiresInMinutes ?? 60;
+
+			var data = new ResetPasswordData
+			{
+				UserName = userName,
+				// Made up, like the key in it: a real one would be a credential.
+				ResetLink = blankToNull(request.ResetLink) ?? "https://portal.example.com/ResetPassword/" + Convert.ToHexString(RandomNumberGenerator.GetBytes(16)),
+				ExpiresAtUtc = DateTime.UtcNow.AddMinutes(minutes),
+			};
+			var email = new EmailEnvelope
+			{
+				To = request.To,
+				ToName = userName,
+				Account = blankToNull(request.Account),
+				Ref = reference,
+			};
+
+			try
+			{
+				await mSender.CreateEmailFromTemplateAsync(mRepository, email, data, blankToNull(request.Language), cancellationToken);
+			}
+			catch (ArgumentException ex)
+			{
+				// The library never puts an address or text in this message.
+				return Problem(title: "Invalid email message", detail: ex.Message, statusCode: StatusCodes.Status400BadRequest);
+			}
+			catch (TemplateNotFoundException ex)
+			{
+				return Problem(title: "No template", detail: ex.Message, statusCode: StatusCodes.Status409Conflict);
+			}
+			catch (TemplateRenderException ex)
+			{
+				// Names the template and the part that is wrong, never a value.
+				return Problem(title: "The template cannot be filled in", detail: ex.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+			}
+			catch (InvalidOperationException ex)
+			{
+				// The email transport is off, or the templates were not registered; both messages say which setting.
+				return Problem(title: "Templated email is not available", detail: ex.Message, statusCode: StatusCodes.Status409Conflict);
+			}
+
+			await mRepository.SaveAsync(cancellationToken);
+
 			return Accepted(new EmailTestAcceptedDto { Reference = reference });
 		}
 

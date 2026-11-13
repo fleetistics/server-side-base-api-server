@@ -114,6 +114,27 @@ public sealed class DeviceStateDataTests
         back.Extra.ShouldBeNull();
     }
 
+    [Fact]
+    public void Speed_And_Direction_AreReadBack_AndAFractionalDirectionIsKeptAsExtra()
+    {
+        var data = new DeviceStateData
+        {
+            Speed = new StateValue<float>(42.5f, T1, T0),
+            Direction = new StateValue<short>(270, T1),
+        };
+
+        var back = DeviceStateData.Parse(data.ToJson());
+
+        back.Speed!.Value.ShouldBe(42.5f);
+        back.Speed.Since.ShouldBe(T0);
+        back.Direction!.Value.ShouldBe((short)270);
+        back.Extra.ShouldBeNull();
+
+        var odd = DeviceStateData.Parse("""{"direction":{"v":1.5,"t":"2026-10-29T12:00:00Z"}}""");
+        odd.Direction.ShouldBeNull();
+        odd.Extra!.Keys.ShouldBe(new[] { "direction" });
+    }
+
     [Theory]
     [InlineData(null, null)]
     [InlineData(-1.0, null)]   // the provider says unavailable

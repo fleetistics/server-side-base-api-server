@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using exs.notifications_model.Outbox;
+using exs.notifications_model.Templates;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
 
@@ -188,6 +189,101 @@ public sealed class EmailTestControllerTests : IAsyncLifetime
         status.GetProperty("errorMessage").GetString().ShouldContain("Recipient address rejected");
         status.GetProperty("destinationInvalid").GetBoolean().ShouldBeTrue();
         status.GetProperty("account").GetString().ShouldBe("alias-a");
+    }
+
+    private async Task AddResetPasswordTemplateAsync(string subject = "Reset your password", string language = "en")
+    {
+        await _fixture.QueryDbAsync(async db =>
+        {
+            db.Set<NotificationTemplate>().Add(new NotificationTemplate
+            {
+                TemplateKey = "password-reset",
+                Language = language,
+                Version = 1,
+                IsActive = true,
+                Subject = subject,
+                Text = "Hi {{ user_name }}, reset it here: <secure>{{ reset_link }}</secure> (valid until {{ expires_at_utc | date: \"%Y-%m-%d %H:%M\" }} UTC)",
+                Html = "<p>Hi {{ user_name }}</p><p><a href=\"<secure>{{ reset_link }}</secure>\">Reset</a></p>",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "test",
+            });
+            await db.SaveChangesAsync();
+            return 0;
+        });
+    }
+
+    [Fact]
+    public async Task PostResetPassword_SendsTheTemplatedMail_WithTheLinkInSecureTags_AndTheTemplateNamedInTheEnvelope()
+    {
+        await AddResetPasswordTemplateAsync();
+        var client = await _fixture.CreateAuthenticatedClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/test/email/reset-password", new { to = "tess.tester@example.com", userName = "Tess" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        var reference = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("reference").GetString();
+        await NotificationRaiser.WaitUntilAsync(() => Task.FromResult(_fixture.Sender.Messages.Count == 1));
+        var mail = _fixture.Sender.Messages.ShouldHaveSingleItem();
+        mail.Ref.ShouldBe(reference);
+        mail.Body.To.Address.ShouldBe("tess.tester@example.com");
+        mail.Body.To.Name.ShouldBe("Tess");
+        mail.Body.Subject.ShouldBe("Reset your password");
+        // The sender is the one that strips the tags and masks the kept copy, so they arrive intact.
+        mail.Body.Text.ShouldStartWith("Hi Tess, reset it here: <secure>https://portal.example.com/ResetPassword/");
+        mail.Body.Text.ShouldContain("</secure> (valid until ");
+        mail.Body.Html.ShouldContain("<secure>https://portal.example.com/ResetPassword/");
+        mail.Template.ShouldNotBeNull();
+        mail.Template.Key.ShouldBe("password-reset");
+        mail.Template.Version.ShouldBe(1);
+        mail.Template.Language.ShouldBe("en");
+
+        var poll = await client.GetAsync($"/api/test/email/{reference}");
+        poll.StatusCode.ShouldBe(HttpStatusCode.OK);
+        assertNoSecrets(await poll.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task PostResetPassword_UsesTheTemplateOfTheWantedLanguage_AndTheGivenLink()
+    {
+        await AddResetPasswordTemplateAsync("english");
+        await AddResetPasswordTemplateAsync("ukrainian", language: "uk");
+        var client = await _fixture.CreateAuthenticatedClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/test/email/reset-password", new { to = "tess.tester@example.com", language = "uk-UA", resetLink = "https://example.com/r/abc" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        await NotificationRaiser.WaitUntilAsync(() => Task.FromResult(_fixture.Sender.Messages.Count == 1));
+        var mail = _fixture.Sender.Messages.ShouldHaveSingleItem();
+        mail.Body.Subject.ShouldBe("ukrainian");
+        mail.Body.Text.ShouldContain("<secure>https://example.com/r/abc</secure>");
+        mail.Template!.Language.ShouldBe("uk");
+    }
+
+    [Fact]
+    public async Task PostResetPassword_WithoutATemplateRow_Is409NamingTheKey_AndWritesNothing()
+    {
+        var client = await _fixture.CreateAuthenticatedClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/test/email/reset-password", new { to = "tess.tester@example.com" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        var body = await response.Content.ReadAsStringAsync();
+        body.ShouldContain("password-reset");
+        body.ShouldNotContain("tess.tester@example.com");
+        (await _fixture.QueryDbAsync(db => db.Set<OutboxMessage>().CountAsync())).ShouldBe(0);
+        _fixture.Sender.Messages.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task PostResetPassword_WithABadAddress_Is400_AndWritesNothing()
+    {
+        await AddResetPasswordTemplateAsync();
+        var client = await _fixture.CreateAuthenticatedClientAsync();
+
+        var response = await client.PostAsJsonAsync("/api/test/email/reset-password", new { to = "not-an-address" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await _fixture.QueryDbAsync(db => db.Set<OutboxMessage>().CountAsync())).ShouldBe(0);
     }
 
     private static void assertNoSecrets(string json)
