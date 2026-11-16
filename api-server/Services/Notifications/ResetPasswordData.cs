@@ -3,7 +3,7 @@ using exs.notifications_service.Templates;
 namespace api_server.Services.Notifications
 {
 	/// <summary>
-	/// The data of the "password-reset" email: what its template ({{ user_name }}, {{ reset_link }}, {{ expires_at_utc }}) can use.
+	/// The data of the "password-reset" email: what its template ({{ UserName }}, {{ ResetLink }}, {{ ExpiresAtUtc }}, named exactly as the properties below) can use.
 	/// Filled by whoever sends it and handed to INotificationSender.CreateEmailFromTemplateAsync; the wording lives in the
 	/// notification_template row with the key below, one per language.
 	///

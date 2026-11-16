@@ -202,8 +202,8 @@ public sealed class EmailTestControllerTests : IAsyncLifetime
                 Version = 1,
                 IsActive = true,
                 Subject = subject,
-                Text = "Hi {{ user_name }}, reset it here: <secure>{{ reset_link }}</secure> (valid until {{ expires_at_utc | date: \"%Y-%m-%d %H:%M\" }} UTC)",
-                Html = "<p>Hi {{ user_name }}</p><p><a href=\"<secure>{{ reset_link }}</secure>\">Reset</a></p>",
+                Text = "Hi {{ UserName }}, reset it here: <secure>{{ ResetLink }}</secure> (valid until {{ ExpiresAtUtc | date: \"%Y-%m-%d %H:%M\" }} UTC)",
+                Html = "<p>Hi {{ UserName }}</p><p><a href=\"<secure>{{ ResetLink }}</secure>\">Reset</a></p>",
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = "test",
             });

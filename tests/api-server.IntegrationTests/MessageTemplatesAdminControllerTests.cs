@@ -51,7 +51,7 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
                 Version = version,
                 IsActive = active,
                 Subject = subject,
-                Text = "Hi {{ user_name }}",
+                Text = "Hi {{ UserName }}",
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = "seed",
             };
@@ -101,14 +101,14 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var model = (await JsonOf(response)).EnumerateArray().Single(m => m.GetProperty("key").GetString() == Key);
         var variables = model.GetProperty("variables").EnumerateArray().ToDictionary(v => v.GetProperty("path").GetString()!);
-        variables.Keys.ShouldBe(["user_name", "reset_link", "expires_at_utc"]);
-        variables["user_name"].GetProperty("type").GetString().ShouldBe("string");
-        variables["user_name"].GetProperty("optional").GetBoolean().ShouldBeFalse();
-        variables["expires_at_utc"].GetProperty("type").GetString().ShouldBe("datetime");
+        variables.Keys.ShouldBe(["UserName", "ResetLink", "ExpiresAtUtc"]);
+        variables["UserName"].GetProperty("type").GetString().ShouldBe("string");
+        variables["UserName"].GetProperty("optional").GetBoolean().ShouldBeFalse();
+        variables["ExpiresAtUtc"].GetProperty("type").GetString().ShouldBe("datetime");
         var sample = model.GetProperty("sample");
-        sample.GetProperty("user_name").GetString().ShouldBe("Sample UserName");
-        sample.GetProperty("reset_link").GetString().ShouldBe("Sample ResetLink");
-        sample.GetProperty("expires_at_utc").GetString().ShouldNotBeNullOrEmpty();
+        sample.GetProperty("UserName").GetString().ShouldBe("Sample UserName");
+        sample.GetProperty("ResetLink").GetString().ShouldBe("Sample ResetLink");
+        sample.GetProperty("ExpiresAtUtc").GetString().ShouldNotBeNullOrEmpty();
     }
 
     [Fact]
@@ -158,8 +158,8 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
     {
         var client = await CreateAdminClientAsync();
 
-        var first = await client.PostAsJsonAsync($"{Prefix}/{Key}/versions", new { language = "EN", subject = "Reset", text = "Hi {{ user_name }}: <secure>{{ reset_link }}</secure>" });
-        var second = await client.PostAsJsonAsync($"{Prefix}/{Key}/versions", new { language = "en", subject = "Reset 2", html = "<p>{{ user_name }}</p>" });
+        var first = await client.PostAsJsonAsync($"{Prefix}/{Key}/versions", new { language = "EN", subject = "Reset", text = "Hi {{ UserName }}: <secure>{{ ResetLink }}</secure>" });
+        var second = await client.PostAsJsonAsync($"{Prefix}/{Key}/versions", new { language = "en", subject = "Reset 2", html = "<p>{{ UserName }}</p>" });
 
         first.StatusCode.ShouldBe(HttpStatusCode.Created);
         var created = await JsonOf(first);
@@ -203,7 +203,7 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("Hi {{ user_nmae }}", null, "text", "user_nmae")]
+    [InlineData("Hi {{ UserNmae }}", null, "text", "UserNmae")]
     [InlineData("S", "<p>{{ nope }}</p>", "html", "nope")]
     public async Task PostVersion_ThatDoesNotRender_Is422_NamingThePart_AndWritesNothing(string text, string? html, string part, string problem)
     {
@@ -224,7 +224,7 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
     {
         var client = await CreateAdminClientAsync();
 
-        var response = await client.PostAsJsonAsync($"{Prefix}/{Key}/versions", new { language = "en", subject = "S", text = "link <secure>{{ reset_link }}" });
+        var response = await client.PostAsJsonAsync($"{Prefix}/{Key}/versions", new { language = "en", subject = "S", text = "link <secure>{{ ResetLink }}" });
 
         response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
     }
@@ -265,9 +265,9 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
         var response = await client.PostAsJsonAsync($"{Prefix}/{Key}/preview", new
         {
             language = "en",
-            subject = "Hello {{ user_name }}",
-            text = "Reset: <secure>{{ reset_link }}</secure>",
-            html = "<p>{{ user_name }}</p>",
+            subject = "Hello {{ UserName }}",
+            text = "Reset: <secure>{{ ResetLink }}</secure>",
+            html = "<p>{{ UserName }}</p>",
         });
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -285,9 +285,9 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
 
         var response = await client.PostAsJsonAsync($"{Prefix}/{Key}/preview", new
         {
-            subject = "{{ user_name }}",
-            html = "<p>{{ user_name }}</p>",
-            model = new { user_name = "A <b> & B" },
+            subject = "{{ UserName }}",
+            html = "<p>{{ UserName }}</p>",
+            model = new Dictionary<string, string> { ["UserName"] = "A <b> & B" }, // a dictionary, so the serializer's camelCase policy does not rename the key
         });
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -317,7 +317,7 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("""{"subject":"S","text":"t","model":{"expires_at_utc":{"a":1}}}""")]
+    [InlineData("""{"subject":"S","text":"t","model":{"ExpiresAtUtc":{"a":1}}}""")]
     [InlineData("""{"subject":"S","text":"t","model":"not an object"}""")]
     public async Task Preview_WithAModelThatDoesNotFit_Is400(string json)
     {

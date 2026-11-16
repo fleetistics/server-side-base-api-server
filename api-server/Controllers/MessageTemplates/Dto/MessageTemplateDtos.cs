@@ -28,7 +28,7 @@ namespace api_server.Controllers.MessageTemplates.Dto
 
 		public string? Html { get; set; }
 
-		/// <summary>A JSON object (snake_case keys) laid over the model's sample; null for the sample as it is.</summary>
+		/// <summary>A JSON object (keys named as the model's properties, PascalCase, e.g. "UserName") laid over the model's sample; null for the sample as it is.</summary>
 		public JsonNode? Model { get; set; }
 	}
 

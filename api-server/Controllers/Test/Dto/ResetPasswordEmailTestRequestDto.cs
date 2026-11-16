@@ -9,16 +9,16 @@ namespace api_server.Controllers.Test.Dto
 		[Required]
 		public string To { get; set; } = "";
 
-		/// <summary>What the email calls the user ({{ user_name }}) and the recipient's display name. Default: "Test User".</summary>
+		/// <summary>What the email calls the user ({{ UserName }}) and the recipient's display name. Default: "Test User".</summary>
 		public string? UserName { get; set; }
 
 		/// <summary>The language of the template wanted, such as "uk". Default, or a language with no template: the default language.</summary>
 		public string? Language { get; set; }
 
-		/// <summary>The link put in the email ({{ reset_link }}). Default: a made-up one that opens nothing, with a random key in it.</summary>
+		/// <summary>The link put in the email ({{ ResetLink }}). Default: a made-up one that opens nothing, with a random key in it.</summary>
 		public string? ResetLink { get; set; }
 
-		/// <summary>How long from now the made-up key is said to be valid ({{ expires_at_utc }}). Default 60.</summary>
+		/// <summary>How long from now the made-up key is said to be valid ({{ ExpiresAtUtc }}). Default 60.</summary>
 		[Range(1, 1440)]
 		public int? ExpiresInMinutes { get; set; }
 
