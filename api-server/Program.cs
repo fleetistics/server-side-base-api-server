@@ -298,7 +298,8 @@ try
             }
         });
 
-    var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+    // A browser's Origin header never ends with "/", and the policy compares as plain text, so "https://host:5174/" in the config would never match.
+    var allowedOrigins = (builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? []).Select(o => o.Trim().TrimEnd('/')).ToArray();
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("SpaPolicy", policy =>
