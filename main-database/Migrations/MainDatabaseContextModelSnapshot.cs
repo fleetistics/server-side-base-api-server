@@ -25,6 +25,163 @@ namespace main_database.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("db_model.AppStructure.ApplicationMenu", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short>("MenuKind")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("OwnerCompanyId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("application_menu", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.AppStructure.ApplicationMenuItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ApplicationPageId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("DividerAfter")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("DividerBefore")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Icon")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("MenuId")
+                        .HasColumnType("integer");
+
+                    b.Property<short?>("OrderBy")
+                        .HasColumnType("smallint");
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Path")
+                        .HasColumnType("text");
+
+                    b.Property<short?>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("application_menu_item", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.AppStructure.ApplicationPage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<short>("ClientApplicationId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("CodeClassName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<short>("CodeSyncState")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("IsNotForMenu")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("KbItemKey")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("application_page", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.AppStructure.Role2MenuItem", b =>
+                {
+                    b.Property<int>("PermissionRoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ApplicationMenuItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool?>("CanCreate")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("CanDelete")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("CanEdit")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("CanView")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("PermissionRoleId", "ApplicationMenuItemId");
+
+                    b.ToTable("role2menu_item", (string)null);
+                });
+
             modelBuilder.Entity("db_model.Auth.SettingsEntry", b =>
                 {
                     b.Property<int>("Id")
