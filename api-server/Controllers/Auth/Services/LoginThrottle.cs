@@ -4,14 +4,15 @@ using Microsoft.Extensions.Options;
 namespace api_server.Auth
 {
     /// <summary>
-    /// Per-account brake on password guessing, complementing the per-IP rate limit (which a
-    /// distributed attack walks around). Keyed by the user name that was typed — not by the
-    /// matching user — so an unknown name locks exactly like a real one and the lock reveals
-    /// nothing about which accounts exist.
+    /// Brake on password guessing per user name and client IP, complementing the per-IP rate limit.
+    /// Keyed by the user name that was typed — not by the matching user — so an unknown name locks
+    /// exactly like a real one and the lock reveals nothing about which accounts exist. The key is
+    /// "{name}|{ip}": someone who knows a user name can only lock that name out for their own IP,
+    /// not for the real user. The flip side: an attacker rotating IPs gets 5 guesses per IP and
+    /// name, so the per-IP rate limit is what bounds a distributed attack.
     ///
-    /// State is in memory: it is per server instance and resets on restart. The trade-off of
-    /// any account lock applies too — someone who knows a user name can keep that account
-    /// locked — which the short lockout and the reset-password unlock are meant to soften.
+    /// State is in memory: it is per server instance and resets on restart. The reset-password
+    /// unlock clears the name's counters for every IP (see <see cref="Reset"/>).
     /// </summary>
     public class LoginThrottle(IOptions<AuthOptions> options, TimeProvider time)
     {
@@ -91,8 +92,25 @@ namespace api_server.Auth
             }
         }
 
-        /// <summary>Forgets the account's failures and lock (after a successful login or password reset).</summary>
-        public void Reset(string key) => _entries.TryRemove(key, out _);
+        /// <summary>Forgets one key's failures and lock (after a successful login from that name+IP).</summary>
+        public void ResetKey(string key) => _entries.TryRemove(key, out _);
+
+        /// <summary>
+        /// Forgets the failures and locks of an account across every IP: the key itself and every
+        /// "{key}|{ip}" entry (after a password reset). Scans all tracked keys, so it is for rare events only.
+        /// </summary>
+        public void Reset(string key)
+        {
+            _entries.TryRemove(key, out _);
+            var prefix = key + "|";
+            foreach (var entryKey in _entries.Keys)
+            {
+                if (entryKey.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    _entries.TryRemove(entryKey, out _);
+                }
+            }
+        }
 
         private void Purge(DateTime now)
         {

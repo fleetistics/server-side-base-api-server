@@ -93,10 +93,10 @@ public sealed class LoginPasswordTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Login_UserNameMode_IsCaseSensitive_AndIgnoresSurroundingSpaces()
+    public async Task Login_UserNameMode_IsCaseInsensitive_AndIgnoresSurroundingSpaces()
     {
         (await LoginAsync(ApiFixture.TestUserName.ToUpperInvariant(), ApiFixture.TestPassword))
-            .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
         (await LoginAsync($"  {ApiFixture.TestUserName} ", ApiFixture.TestPassword))
             .StatusCode.ShouldBe(HttpStatusCode.OK);
     }

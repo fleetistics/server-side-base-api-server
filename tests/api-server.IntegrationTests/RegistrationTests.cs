@@ -321,7 +321,7 @@ public sealed class RegistrationTests : IAsyncLifetime
         // "_bob" is a suffix of all of them, but only an exact "{guid}_bob" is the same registration.
         (await GetPendingAsync("alice_bob")).ShouldHaveSingleItem();
         (await GetPendingAsync("x_bob")).ShouldHaveSingleItem();
-        (await GetPendingAsync("BOB")).ShouldHaveSingleItem(); // user names compare case-sensitively
+        (await GetPendingAsync("BOB")).ShouldBeEmpty(); // user names compare case-insensitively: the same registration
         (await GetUserByIdAsync(bob.Id))!.UserName.ShouldBe("bob");
     }
 

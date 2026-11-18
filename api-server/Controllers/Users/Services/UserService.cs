@@ -1,4 +1,5 @@
 using api_server.Medias;
+using db_model.Companies;
 using db_model.UserManagement;
 using exs.Database.Commons.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,13 @@ namespace api_server.Users
 
 		/// <summary>Null when the user does not exist.</summary>
 		//Task<UserDto?> UpdateUserAsync(int userId, UserDto data, CancellationToken cancellationToken);
+
+		/// <summary>
+		/// Whether the caller may patch <paramref name="targetUserId"/>: always their own user, otherwise only a
+		/// non-deleted member of the caller's current company whose own current company is that one too (a member
+		/// who works for another company right now keeps control of their profile).
+		/// </summary>
+		Task<bool> CanPatchUserAsync(int callerUserId, int? callerCompanyId, int targetUserId, CancellationToken cancellationToken);
 
 		/// <summary>Applies only the fields present in <paramref name="patch"/>. Returns false when the user does not exist.</summary>
 		Task<bool> PatchUserAsync(int userId, UserPatchDto patch, CancellationToken cancellationToken);
@@ -124,6 +132,17 @@ namespace api_server.Users
 		//	return ToDto(user);
 		//}
 
+		public async Task<bool> CanPatchUserAsync(int callerUserId, int? callerCompanyId, int targetUserId, CancellationToken cancellationToken)
+		{
+			if (callerUserId == targetUserId) return true;
+			if (callerCompanyId is not int companyId) return false;
+
+			return await mRepository.GetQueryable<User>(u => u.Id == targetUserId && u.CompanyId == companyId).AnyAsync(cancellationToken)
+				&& await mRepository
+					.GetQueryable<User2Company>(x => x.CompanyId == companyId && x.UserId == targetUserId && x.StatusId != User2CompanyStatus.Deleted && x.StatusId != User2CompanyStatus.DeletedBySiteAdmin)
+					.AnyAsync(cancellationToken);
+		}
+
 		public async Task<bool> PatchUserAsync(int userId, UserPatchDto patch, CancellationToken cancellationToken)
 		{
 			var user = await mRepository.GetQueryable<User>(u => u.Id == userId).FirstOrDefaultAsync(cancellationToken);
@@ -174,6 +193,7 @@ namespace api_server.Users
 			if (patch.FullName.IsSet) user.FullName = patch.FullName.Value!;
 			if (patch.Phone.IsSet) user.Phone = patch.Phone.Value;
 			if (patch.Email.IsSet) user.Email = patch.Email.Value;
+			if (patch.IsMfaEnabled.IsSet) user.IsMfaEnabled = patch.IsMfaEnabled.Value;
 
 			await mRepository.SaveAsync(cancellationToken);
 			return true;

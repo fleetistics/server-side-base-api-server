@@ -55,9 +55,14 @@ namespace api_server.Users
 
 		[HttpPatch("/api/users/{userId}")]
 		[ProducesResponseType(StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
 		[ProducesResponseType(StatusCodes.Status404NotFound)]
 		public async Task<IActionResult> PatchUser([FromRoute] int userId, [FromBody] UserPatchDto patch, CancellationToken cancellationToken)
 		{
+			if (!await mUsers.CanPatchUserAsync(UserId, CompanyId, userId, cancellationToken))
+			{
+				return Problem(detail: "You can't edit this user.", statusCode: StatusCodes.Status403Forbidden);
+			}
 			var found = await mUsers.PatchUserAsync(userId, patch, cancellationToken);
 			if (!found)
 			{

@@ -8,13 +8,31 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 {
 	public partial class MainDatabaseContext
 	{
+		/// <summary>Non-deterministic ICU collation that ignores case (and nothing else).</summary>
+		public const string CaseInsensitiveCollation = "case_insensitive";
+
 		private void createUserModel(ModelBuilder modelBuilder)
 		{
+			// User names compare case-insensitively in the database itself ("Bob" == "bob"), so queries use a plain
+			// == and the index below serves them. The collation is non-deterministic, which PostgreSQL before 18
+			// refuses in LIKE: pattern matches on UserName must name a deterministic collation explicitly.
+			// PostgreSQL only - other providers (SQLite in the unit tests) keep their default comparison.
+			if (Database.IsNpgsql())
+			{
+				modelBuilder.HasCollation(CaseInsensitiveCollation, locale: "und-u-ks-level2", provider: "icu", deterministic: false);
+			}
+
 			modelBuilder.Entity<User>(entity =>
 			{
 				entity.ToTable("user");
 				entity.HasKey(e => new { e.Id });
 				entity.Property(e => e.Id).ValueGeneratedOnAdd();
+				if (Database.IsNpgsql())
+				{
+					entity.Property(e => e.UserName).UseCollation(CaseInsensitiveCollation);
+				}
+				// Not unique: only Active users hold a name, an Inactive account may share it with a newer one.
+				entity.HasIndex(e => e.UserName);
 
 				entity.HasOne(e => e.AvatarImage).WithMany().HasForeignKey(e => e.AvatarImageId);
                 entity.HasOne(e => e.GovIDImage).WithMany().HasForeignKey(e => e.GovIDImageId);

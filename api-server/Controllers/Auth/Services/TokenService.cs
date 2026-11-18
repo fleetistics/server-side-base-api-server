@@ -7,6 +7,9 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace api_server.Auth
 {
+    /// <summary>A refresh key in both forms: its three fields, and the {SessionKey}.{RotationCounter}.{SessionSign} string for the cookie.</summary>
+    public sealed record RotationKey(string SessionKey, int RotationCounter, string SessionSign, string CompositeCookieKey);
+
     public class TokenService(IOptions<JwtOptions> jwtOptions)
     {
         private const string TokenUseClaim = "token_use";
@@ -72,53 +75,77 @@ namespace api_server.Auth
         // 256 bits of entropy, URL-safe. Used for the per-session key salt and for password reset keys.
         public static string GenerateKey() => Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(32));
 
-        // The refresh cookie value: "{sessionId}.{counter}.{mac}". The mac is
-        // HMAC-SHA256(server secret, "rt1|{sessionId}|{counter}|{salt}"), so the server can recompute the key of
+        // The refresh key: "{sessionKey}.{counter}.{mac}". sessionKey is the session's random handle
+        // (UserSession.SessionKey, see GenerateKey), not its database id. The mac is
+        // HMAC-SHA256(server secret, "rt2|{sessionKey}|{counter}|{salt}"), so the server can recompute the key of
         // any counter of a session (it never has to store one) while nobody without the secret can forge it.
         // Base64url never contains '.', so the split is unambiguous.
-        public string CreateRotationKey(int sessionId, int counter, string salt) =>
-            $"{sessionId}.{counter}.{Base64UrlEncoder.Encode(ComputeRotationMac(sessionId, counter, salt))}";
-
-        /// <summary>Splits a cookie value into its parts; false for anything that is not three well-formed parts.</summary>
-        public static bool TryParseRotationKey(string? value, out int sessionId, out int counter, out byte[] mac)
+        // The mac is computed once and handed out both as the separate fields and as the combined value, so nobody
+        // downstream has to sign, split or join anything.
+        public RotationKey CreateRotationKey(string sessionKey, int counter, string salt)
         {
-            sessionId = 0;
-            counter = 0;
-            mac = [];
+            var sign = Base64UrlEncoder.Encode(ComputeRotationMac(sessionKey, counter, salt));
+            return new RotationKey(sessionKey, counter, sign, $"{sessionKey}.{counter}.{sign}");
+        }
+
+        // A SessionKey is GenerateKey() output: 32 random bytes in base64url (43 characters, no padding).
+        private const int SessionKeyLength = 43;
+
+        /// <summary>Splits a key into its parts; null for anything that is not three well-formed parts.
+        /// Only the shape is checked here (the mac is not verified): that needs the session's salt, see <see cref="IsValidRotationMac"/>.</summary>
+        public static RotationKey? TryParseRotationKey(string? value)
+        {
             if (string.IsNullOrEmpty(value))
             {
-                return false;
+                return null;
             }
             var parts = value.Split('.');
             if (parts.Length != 3 ||
-                !int.TryParse(parts[0], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out sessionId) ||
-                !int.TryParse(parts[1], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out counter))
+                parts[0].Length != SessionKeyLength ||
+                !int.TryParse(parts[1], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var counter))
             {
-                return false;
+                return null;
             }
             try
             {
-                mac = Base64UrlEncoder.DecodeBytes(parts[2]);
+                if (Base64UrlEncoder.DecodeBytes(parts[2]).Length != HMACSHA256.HashSizeInBytes)
+                {
+                    return null;
+                }
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+            return new RotationKey(parts[0], counter, parts[2], value);
+        }
+
+        /// <summary>Constant-time check of a presented mac against the one the session's salt yields.</summary>
+        //public bool IsValidRotationMac(string sessionKey, int counter, string salt, byte[] presentedMac) =>
+        //    CryptographicOperations.FixedTimeEquals(ComputeRotationMac(sessionKey, counter, salt), presentedMac);
+
+        /// <summary>Same check for a mac that arrives as text; a malformed one is simply not valid (never an exception).</summary>
+        public bool IsValidRotationMac(string presentedSessionKey, int presentedCounter, string salt, string? presentedMac)
+        {
+            if (string.IsNullOrEmpty(presentedMac))
+            {
+                return false;
+            }
+            byte[] mac;
+            try
+            {
+                mac = Base64UrlEncoder.DecodeBytes(presentedMac);
             }
             catch (FormatException)
             {
                 return false;
             }
-            return mac.Length == HMACSHA256.HashSizeInBytes;
+            return CryptographicOperations.FixedTimeEquals(ComputeRotationMac(presentedSessionKey, presentedCounter, salt), mac);
         }
 
-        /// <summary>Constant-time check of a presented mac against the one the session's salt yields.</summary>
-        public bool IsValidRotationMac(int sessionId, int counter, string salt, byte[] presentedMac) =>
-            CryptographicOperations.FixedTimeEquals(ComputeRotationMac(sessionId, counter, salt), presentedMac);
+        private byte[] ComputeRotationMac(string sessionKey, int counter, string salt) =>
+            HMACSHA256.HashData(_refreshKey, Encoding.UTF8.GetBytes($"rt2|{sessionKey}|{counter}|{salt}"));
 
-        private byte[] ComputeRotationMac(int sessionId, int counter, string salt) =>
-            HMACSHA256.HashData(_refreshKey, Encoding.UTF8.GetBytes($"rt1|{sessionId}|{counter}|{salt}"));
-
-        // Scoped to /api/auth only: the SPA never needs to send this cookie to
-        // ordinary API endpoints, so narrowing the path shrinks the exposure
-        // if any endpoint were ever vulnerable to XSS/CSRF.
-        // persistentUntilUtc null -> session cookie (no Expires); the server-side session expiry
-        // is what actually ends such a session.
         public CookieOptions BuildRefreshCookieOptions(bool isHttps, DateTime? persistentUntilUtc)
         {
             return new CookieOptions
@@ -135,7 +162,7 @@ namespace api_server.Auth
             };
         }
 
-        public const string RefreshCookiePath = "/api/auth";
+        public const string RefreshCookiePath = "/api/auth_cookie";
 
         public string RefreshCookieName => _options.RefreshCookieName;
         public bool AllowInsecureRefreshCookie => _options.AllowInsecureRefreshCookie;

@@ -5,6 +5,7 @@ namespace api_server.Users
 {
 	public class UserCurrentContextController : AuthAPIController
 	{
+
 		public UserCurrentContextController(IUserCurrentContextService userCurrentContext)
 		{
 			mUserCurrentContext = userCurrentContext;

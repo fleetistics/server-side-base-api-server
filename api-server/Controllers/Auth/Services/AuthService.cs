@@ -1,5 +1,4 @@
 using api_server.Auth.Dto;
-using api_server.Controllers.Teams.Services;
 using api_server.core;
 using db_model.Gps;
 using db_model.UserManagement;
@@ -14,28 +13,24 @@ using System.Text;
 
 namespace api_server.Auth
 {
-    public enum AuthStatus
+    public enum LoginStatus
     {
         Success,
         InvalidCredentials,
-        Unauthenticated,
         /// <summary>The account is temporarily locked after repeated failed logins.</summary>
         TooManyAttempts,
+        /// <summary>The password was right, but the mobile device serial is registered to another user.</summary>
+        GpsDeviceFromAnotherUser
     }
 
-    /// <param name="RotationKey">New rotation key the caller should write to the cookie.</param>
-    /// <param name="ClearCookie">True when the caller should delete the refresh cookie.</param>
-    /// <param name="RetryAfter">How long the lock lasts (TooManyAttempts only).</param>
-    /// <param name="CookieExpiresUtc">Expiry for the refresh cookie; null means a session cookie.</param>
-    public sealed record AuthResult(
-        AuthStatus Status,
-        UserSessionCheckResponse? Response = null,
-        string? RotationKey = null,
-        bool ClearCookie = false,
-        TimeSpan? RetryAfter = null,
-        DateTime? CookieExpiresUtc = null)
+    /// <summary>
+    /// A successful login or session refresh: the refresh key (as separate fields and as the combined cookie
+    /// value), the access token and the user id. <c>CookieExpiresUtc</c> is null for a session cookie.
+    /// The key fields and the access token are secrets, so ToString is overridden to leave them out.
+    /// </summary>
+    public sealed record SessionCheckResult(string SessionKey, int RotationCounter, string SessionSign, string CompositeCookieKey, DateTime? CookieExpiresUtc, int UserId, string AccessToken)
     {
-        public bool Succeeded => Status == AuthStatus.Success;
+        public override string ToString() => $"{nameof(SessionCheckResult)} {{ UserId = {UserId} }}";
     }
 
     public enum RegisterUserStatus
@@ -72,28 +67,44 @@ namespace api_server.Auth
     public class AuthService(
         TokenService tokenService,
         IRepository repository,
-        ITeamService teamService,
         IOptions<AuthOptions> authOptions,
         PasswordHasher passwordHasher,
         IPasswordResetKeySender resetKeySender,
         LoginThrottle loginThrottle,
         ILogger<AuthService> logger)
     {
+        private SessionCheckResult generateSessionCheckResult(UserSession session)
+        {
+            var key = tokenService.CreateRotationKey(session.SessionKey, session.Token.RotationCounter, session.Token.KeySalt);
+            return new SessionCheckResult(
+                session.SessionKey,
+                session.Token.RotationCounter,
+                key.SessionSign,
+                key.CompositeCookieKey,
+                session.Token.IsPersistent ? session.Token.ExpirationTime : null,
+                session.UserId,
+                tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), session.MobileGpsDeviceId?.ToString(), companyId: session.CompanyId?.ToString())
+
+            );
+        }
+
+
         private readonly AuthOptions _authOptions = authOptions.Value;
 
         /// <param name="rememberMe">True: fixed lifetime and persistent cookie. False: idle-expiring session and session cookie.</param>
-        /// <param name="clientIp">Only for the log; null when unknown.</param>
-        public async Task<AuthResult> LoginAsync(string userName, string password, bool rememberMe, short userSessionSourceId, ClientSideInfo? clientSideInfo, string? clientIp, CancellationToken cancellationToken)
+        /// <param name="clientIp">Part of the failed-login throttle key and of the log; null when unknown.</param>
+        public async Task<(LoginStatus, SessionCheckResult?)> LoginAsync(string userName, string password, bool rememberMe, short userSessionSourceId, string? gpsDeviceSerial, ClientSideInfo clientSideInfo, string? clientIp, CancellationToken cancellationToken)
         {
             using var activity = Telemetry.Source.StartActivity("auth.login");
 
             var name = userName.Trim();
-            var throttleKey = ThrottleKey(name);
             clientIp ??= "unknown";
+            var throttleKey = ThrottleKey(name, clientIp);
 
-            // A locked account refuses everything — the right password included — before any
-            // lookup or hashing. The lock is per typed name, existing or not, so refusing early
-            // says nothing about whether the account exists.
+            // A locked name+IP pair refuses everything — the right password included — before any
+            // lookup or hashing. The lock is per typed name and client IP, existing name or not, so
+            // refusing early says nothing about whether the account exists. Keying by IP as well means
+            // a stranger who knows a user name can only lock that name out for their own IP.
             var retryAfter = loginThrottle.GetRetryAfter(throttleKey);
             if (retryAfter is not null)
             {
@@ -101,24 +112,15 @@ namespace api_server.Auth
                 activity?.SetStatus(ActivityStatusCode.Error, "account locked");
                 logger.LogWarning("Login refused for {UserName} from {ClientIp}: account locked for another {RetryAfterSeconds} s",
                     ForLog(name), clientIp, (int)Math.Ceiling(retryAfter.Value.TotalSeconds));
-                return new AuthResult(AuthStatus.TooManyAttempts, RetryAfter: retryAfter);
+                return (LoginStatus.TooManyAttempts, null);
             }
 
             // Only Active users can log in, and only Active users hold a name (an Inactive account
             // may share its user name with a newer Active one), so the status is part of the lookup.
-            // In unique-e-mail mode the user name is an e-mail address, which registration and
-            // password reset already treat case-insensitively; login does too.
-            var activeUsers = repository.GetQueryable<User>(u => u.StatusId == UserStatus.Active);
-            User? user;
-            if (_authOptions.EmailMode == EmailUsageMode.UniqueEmail)
-            {
-                var lowerName = name.ToLowerInvariant();
-                user = await activeUsers.Where(u => u.UserName.ToLower() == lowerName).FirstOrDefaultAsync(cancellationToken);
-            }
-            else
-            {
-                user = await activeUsers.Where(u => u.UserName == name).FirstOrDefaultAsync(cancellationToken);
-            }
+            // The UserName column has a case-insensitive collation, so == ignores case in both e-mail modes.
+            var user = await repository
+                .GetQueryable<User>(u => u.StatusId == UserStatus.Active && u.UserName == name)
+                .FirstOrDefaultAsync(cancellationToken);
 
             // One Argon2 verification on every path — user found or not, password set or not,
             // right or wrong — so the response time says nothing about which of those it was.
@@ -140,10 +142,10 @@ namespace api_server.Auth
                     logger.LogWarning("Account {UserName} locked for {LockoutMinutes} min after {FailureCount} failed login attempts (last from {ClientIp})",
                         ForLog(name), _authOptions.LoginLockout.TotalMinutes, failures, clientIp);
                 }
-                return new AuthResult(AuthStatus.InvalidCredentials);
+                return (LoginStatus.InvalidCredentials, null);
             }
 
-            loginThrottle.Reset(throttleKey);
+            loginThrottle.ResetKey(throttleKey);
             activity?.SetTag("app.user.id", user.Id);
             
 
@@ -151,8 +153,11 @@ namespace api_server.Auth
             var session = new UserSession
             {
                 UserId = user.Id,
+                CompanyId = user.CompanyId,
                 StatusId = UserSessionStatus.Active,
                 SessionSourceId = userSessionSourceId,
+                // 256 random bits, unique by the index on user_session; the first part of the refresh key.
+                SessionKey = TokenService.GenerateKey(),
                 Token = new SessionTokenInfo
                 {
                     KeySalt = TokenService.GenerateKey(),
@@ -161,42 +166,82 @@ namespace api_server.Auth
                     CreationTime = now,
                     ExpirationTime = rememberMe
                         ? now.AddDays(tokenService.RefreshTokenDays)
-                        : IdleExpiration(now, now),
+                        : now + tokenService.SessionOnlyIdleLifetime,
                     LatestRefreshTime = now,
                 },
             };
-            if (clientSideInfo is not null)
+            session.ClientInfo.ClientApplicationId = clientSideInfo.AppId;
+            session.ClientInfo.PlatformId = clientSideInfo.PlatformId;
+
+            session.ClientInfo.AppVersion = clientSideInfo.AppVersion;
+            session.ClientInfo.AppHash = clientSideInfo.AppHash;
+            session.ClientInfo.PlatformDetails = PlatformDetailsJson.WithClientIp(clientSideInfo.PlatformDetails, clientIp);
+
+            if ( !string.IsNullOrWhiteSpace(gpsDeviceSerial))
             {
-                await convertClientSideInfoToSessionClientInfo(clientSideInfo, session.ClientInfo);
-                if ( !String.IsNullOrWhiteSpace(clientSideInfo.DeviceUID) && (clientSideInfo.PlatformId == ClientDevicePlatform.Ios || clientSideInfo.PlatformId == ClientDevicePlatform.Android))
+
+                var gpsDevice = await repository.GetQueryable<GpsDevice>(e => e.ProviderId == GpsDeviceProvider.Mobile && e.SerialNumber == gpsDeviceSerial).FirstOrDefaultAsync(cancellationToken);
+                if (gpsDevice is null)
                 {
-                    var gpsDevice = await repository.GetQueryable<GpsDevice>(e => e.ProviderId == GpsDeviceProvider.Mobile && e.SerialNumber == clientSideInfo.DeviceUID).FirstOrDefaultAsync(cancellationToken);
-                    if (gpsDevice is null)
+                    if (gpsDeviceSerial.Length > 100)
                     {
-                        gpsDevice = new GpsDevice
-                        {
-                            SerialNumber = clientSideInfo.DeviceUID,
-                            UserId = user.Id,
-                            ProviderId = GpsDeviceProvider.Mobile,
-                            TypeId = convertClientSideInfoToGpsDeviceTypeId(session.ClientInfo),
-                            StatusId = GpsDeviceStatus.Active
-                        };
-                        repository.Create(gpsDevice);
-                        await repository.SaveAsync(cancellationToken);
 
                     }
-                    else if (gpsDevice.StatusId == GpsDeviceStatus.MobileLogOutInactive)
+                    int? gpsDeviceTypeId;
+                    switch (session.ClientInfo.PlatformId)
                     {
-                        gpsDevice.StatusId = GpsDeviceStatus.Active;
+                        case ClientDevicePlatform.Ios:
+                            gpsDeviceTypeId = GpsDeviceType.MobileIos;
+                            break;
+                        case ClientDevicePlatform.Android:
+                            gpsDeviceTypeId = GpsDeviceType.MobileAndroid;
+                            break;
+                        default:
+                            gpsDeviceTypeId = null;
+                            break;
                     }
-                    else if (gpsDevice.StatusId != GpsDeviceStatus.Active)
+                    gpsDevice = new GpsDevice
                     {
-                        activity?.SetStatus(ActivityStatusCode.Error, "gpsDevice not active");
-                        logger.LogWarning("Login rejected for {UserName} from {ClientIp}: gps device {GpsDeviceId} not active", ForLog(name), clientIp, gpsDevice.Id);
-                        return new AuthResult(AuthStatus.InvalidCredentials);
-                    }
+                        SerialNumber = gpsDeviceSerial,
+                        UserId = user.Id,
+                        CompanyId = user.CompanyId,
+                        ProviderId = GpsDeviceProvider.Mobile,
+                        TypeId = gpsDeviceTypeId,
+                        StatusId = GpsDeviceStatus.Active
+                    };
+                    repository.Create(gpsDevice);
+                    await repository.SaveAsync(cancellationToken);
                     session.MobileGpsDeviceId = gpsDevice.Id;
                 }
+                else if (gpsDevice.StatusId == GpsDeviceStatus.MobileLogOutInactive || gpsDevice.StatusId == GpsDeviceStatus.Active)
+                {
+                    if (user.Id != gpsDevice.UserId)
+                    {
+                        activity?.SetStatus(ActivityStatusCode.Error, $"gpsDevice belongs to another user or company Id {gpsDevice.Id} UserId {gpsDevice.UserId} CompanyId {gpsDevice.CompanyId}");
+                        logger.LogWarning($"Login user {user.Id} gpsDevice belongs to another user or company Id {gpsDevice.Id} UserId {gpsDevice.UserId} CompanyId {gpsDevice.CompanyId}");
+                        return (LoginStatus.GpsDeviceFromAnotherUser, null);
+                    }
+                    if (gpsDevice.StatusId == GpsDeviceStatus.MobileLogOutInactive)
+                    {
+                        gpsDevice.StatusId = GpsDeviceStatus.Active;
+                        gpsDevice.CompanyId = user.CompanyId;
+                        session.MobileGpsDeviceId = gpsDevice.Id;
+                    }
+                    else if (gpsDevice.StatusId == GpsDeviceStatus.Active)
+                    {
+                        session.MobileGpsDeviceId = gpsDevice.Id;
+                        gpsDevice.CompanyId = user.CompanyId;
+                    }
+
+                }
+                else
+                {
+                    activity?.SetStatus(ActivityStatusCode.Error, $"gpsDevice not active Id {gpsDevice.Id} StatusId {gpsDevice.StatusId}");
+                    logger.LogWarning($"Login user {user.Id} gpsDevice not active Id {gpsDevice.Id} StatusId {gpsDevice.StatusId}");
+                }
+
+
+
             }
             repository.Create(session);
             await repository.SaveAsync(cancellationToken);
@@ -204,17 +249,137 @@ namespace api_server.Auth
             logger.LogInformation("Login succeeded for {UserName} (UserId {UserId}), session {SessionId}",
                 user.UserName, user.Id, session.Id);
 
-            return await BuildSuccessAsync(session, user.CompanyId, cancellationToken);
+            return (LoginStatus.Success, generateSessionCheckResult(session));
+        }
+
+        public async Task<SessionCheckResult?> RefreshCookieTokenAsync(string cookieKey, ClientSideInfo? clientSideInfo, string? clientIp, CancellationToken cancellationToken)
+        {
+            if (TokenService.TryParseRotationKey(cookieKey) is RotationKey rotationKey)
+            {
+                return await RefreshTokenAsync(rotationKey.SessionKey, rotationKey.RotationCounter, rotationKey.SessionSign, clientSideInfo, clientIp, cancellationToken);
+            }
+            else return null;
+        }
+
+        /// <summary>
+        /// Rotates the session the presented refresh key belongs to and issues a new access token.
+        /// Null means the key was refused (unknown or ended session, forged, expired, replayed, or a
+        /// concurrent refresh left nothing to hand back); the caller answers 401.
+        /// </summary>
+        /// <param name="clientSideInfo">Null for a plain refresh: the stored client info is left as it is.</param>
+        /// <param name="clientIp">Added to the stored PlatformDetails JSON together with clientSideInfo; ignored when that is null.</param>
+        public async Task<SessionCheckResult?> RefreshTokenAsync(string sessionKey, int rotationCounter, string sessionSign, ClientSideInfo? clientSideInfo, string? clientIp, CancellationToken cancellationToken)
+        {
+            using var activity = Telemetry.Source.StartActivity("auth.refresh_session");
+
+            // Auto-device sessions have no session key or salt, so no refresh key can ever match one.
+            var session = await repository.GetQueryable<UserSession>(s => s.SessionKey == sessionKey && s.StatusId == UserSessionStatus.Active).FirstOrDefaultAsync(cancellationToken);
+            if (session is null  || !tokenService.IsValidRotationMac(session.SessionKey, rotationCounter, session.Token.KeySalt, sessionSign))
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "rotation key not valid");
+                // The session key is a secret: neither it nor the presented key is logged.
+                logger.LogWarning("Session rotation rejected: refresh key is not valid{Detail}", session is null ? " (unknown session)" : string.Empty);
+                return null;
+            }
+            activity?.SetTag("app.session.id", session.Id);
+
+            var now = DateTime.UtcNow;
+            if (session.Token.ExpirationTime <= now)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, "session expired");
+                logger.LogWarning("Session rotation rejected: session {SessionId} expired at {ExpirationTimeUtc}", session.Id, session.Token.ExpirationTime);
+                session.StatusId = UserSessionStatus.Expired;
+                await repository.SaveAsync(cancellationToken);
+                return null;
+            }
+
+            if (session.Token.RotationCounter == rotationCounter)
+            {
+                if (clientSideInfo is not null)
+                {
+                    session.ClientInfo.AppVersion = clientSideInfo.AppVersion;
+                    session.ClientInfo.AppHash = clientSideInfo.AppHash;
+                    session.ClientInfo.PlatformDetails = PlatformDetailsJson.WithClientIp(clientSideInfo.PlatformDetails, clientIp);
+                    // The DTO field is optional (the portal has no FCM), the column is NOT NULL: keep the stored value when none is sent.
+                    if (clientSideInfo.FCM_FID is not null)
+                        session.ClientInfo.FCM_FID = clientSideInfo.FCM_FID;
+                }
+
+                // Rotate: the previous counter's key still works for the reuse-grace window, then it's dead for good.
+                session.Token.RotationCounter++;
+                session.Token.LatestRefreshTime = now;
+
+
+                // Idle sessions live on while they are used; persistent ones keep their fixed expiry.
+                if (!session.Token.IsPersistent)
+                {
+                    var idleEnd = now + tokenService.SessionOnlyIdleLifetime;
+                    var maxEnd = session.Token.CreationTime + tokenService.SessionOnlyMaxLifetime;
+                    session.Token.ExpirationTime = idleEnd < maxEnd ? idleEnd : maxEnd;
+                }
+
+                
+                try
+                {
+                    await repository.SaveAsync(cancellationToken);
+                    return generateSessionCheckResult(session);
+                }
+                catch (DbUpdateConcurrencyException)
+                {
+                    // LatestUpdate (stamped by a DB trigger) changed under us: another request saved this session first.
+                    logger.LogInformation("Session {SessionId} rotation lost a race with a concurrent update; reloading", session.Id);
+                    await repository.DbContext.Entry(session).ReloadAsync(cancellationToken);
+                    if (session.StatusId != UserSessionStatus.Active || session.Token.RotationCounter == rotationCounter)
+                    {
+                        // Ended meanwhile, or reloaded and still unrotated (something else touched the row, nothing
+                        // rotated it). Not a verdict on the key: the client simply tries again.
+                        return null;
+                    }
+                    // The winner rotated with this same key: hand back its current state.
+                    return generateSessionCheckResult(session);
+                }
+            }
+
+            // The key we JUST superseded, inside the reuse-grace window: almost certainly a harmless race
+            // (two tabs, an app relaunch, a retried request). Hand back the current state without rotating.
+            if (rotationCounter == session.Token.RotationCounter - 1
+                && session.Token.LatestRefreshTime >= now - tokenService.RefreshReuseGraceWindow
+                && session.Token.ExpirationTime > now)
+            {
+                activity?.SetTag("app.session.reuse_grace_window_hit", true);
+                return generateSessionCheckResult(session);
+            }
+
+            Telemetry.SessionKeyReuseRevocations.Add(1);
+            activity?.SetStatus(ActivityStatusCode.Error, "refresh key reused");
+            logger.LogWarning("Session {SessionId} of user {UserId} revoked: refresh key with counter {PresentedCounter} replayed (current counter {CurrentCounter})",
+                session.Id, session.UserId, rotationCounter, session.Token.RotationCounter);
+            try
+            {
+                await endSessionAsync(session, UserSessionStatus.RevokedKeyReuse, cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // Someone else changed the session in the same instant (a logout, most likely); it is
+                // ending either way, and the caller is refused regardless.
+                logger.LogInformation("Revocation of session {SessionId} raced with another update", session.Id);
+            }
+            return null;
         }
 
         // What the failure counter is keyed by: the typed name, compared the way login compares it
-        // (case-insensitively for e-mail user names). Very long input is hashed so a key stays small.
-        private string ThrottleKey(string name)
+        // (case-insensitively). Very long input is hashed so a key stays small.
+        private static string ThrottleKey(string name)
         {
-            var key = _authOptions.EmailMode == EmailUsageMode.UniqueEmail ? name.ToLowerInvariant() : name;
+            var key = name.ToLowerInvariant();
             return key.Length <= 256 ? key : "h:" + HashResetKey(key);
         }
 
+        // Login's failure counter: one per typed name and client IP ("{name}|{ip}"). The name part is the
+        // account-wide ThrottleKey, so LoginThrottle.Reset(ThrottleKey(name)) clears every IP's counter of it.
+        private static string ThrottleKey(string name, string clientIp) => ThrottleKey(name) + "|" + clientIp;
+
+        
         // The typed name goes into the log: strip control characters (no forged log lines) and
         // cap the length (the field is attacker-controlled).
         private static string ForLog(string value)
@@ -223,179 +388,28 @@ namespace api_server.Auth
             return clean.Length > 100 ? clean[..100] + "…" : clean;
         }
 
-        /// <summary>Rotates the session and issues a new access token.</summary>
 
-        private Task convertClientSideInfoToSessionClientInfo(ClientSideInfo clientSideInfo, SessionClientInfo sessionClientInfo)
+        /// <summary>Ends the active session with this session key. The key is a secret handle, so no mac or counter
+        /// is needed: ending a session is the safe direction. An unknown or already ended session is ignored.</summary>
+        public async Task LogoutAsync(string sessionKey, CancellationToken cancellationToken)
         {
-            sessionClientInfo.AppUID = clientSideInfo.AppUID;
-            sessionClientInfo.DeviceUID = clientSideInfo.DeviceUID;
-            sessionClientInfo.FCM_FID = clientSideInfo.FCM_FID;
-            sessionClientInfo.AppVersion = clientSideInfo.AppVersion;
-            sessionClientInfo.CodeVersion = clientSideInfo.CodeVersion;
-            sessionClientInfo.PlatformId = clientSideInfo.PlatformId;
-            //switch (clientSideInfo.PlatformName.ToLower())
-            //{
-            //    case "ios":
-            //        sessionClientInfo.PlatformId = ClientDevicePlatform.Ios;
-            //        break;
-            //    case "android":
-            //        sessionClientInfo.PlatformId = ClientDevicePlatform.Android;
-            //        break;
-            //    case "windows":
-            //        sessionClientInfo.PlatformId = ClientDevicePlatform.Windows;
-            //        break;
-            //    default:
-            //        sessionClientInfo.PlatformId = ClientDevicePlatform.Unknown;
-            //        break;
-            //}
-            return Task.CompletedTask;
-        }
-        private void refreshSessionClientInfo(ClientSideInfo clientSideInfo, SessionClientInfo sessionClientInfo)
-        {
-            sessionClientInfo.FCM_FID = clientSideInfo.FCM_FID;
-            sessionClientInfo.AppVersion = clientSideInfo.AppVersion;
-            sessionClientInfo.CodeVersion = clientSideInfo.CodeVersion;
-        }
-        // Phones are always provider Mobile; the platform decides the device type (null when unknown).
-        private static int? convertClientSideInfoToGpsDeviceTypeId(SessionClientInfo sessionClientInfo)
-        {
-            switch (sessionClientInfo.PlatformId)
-            {
-                case ClientDevicePlatform.Ios:
-                    return GpsDeviceType.MobileIos;
-                case ClientDevicePlatform.Android:
-                    return GpsDeviceType.MobileAndroid;
-                default:
-                    return null;
-            }
-        }
-        public async Task<AuthResult> RefreshAutoDeviceAsync( ClientSideInfo clientSideInfo, CancellationToken cancellationToken)
-        {
-            using var activity = Telemetry.Source.StartActivity("auth.auto_device.refresh_session");
-
-            if (string.IsNullOrEmpty(clientSideInfo.DeviceUID))
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, "no DeviceUID");
-                return new AuthResult(AuthStatus.Unauthenticated);
-            }
-            var session = await repository
-                .GetQueryable<UserSession>(s => s.ClientInfo.DeviceUID == clientSideInfo.DeviceUID && s.StatusId == UserSessionStatus.Active && (s.ClientInfo.PlatformId == ClientDevicePlatform.Android || s.ClientInfo.PlatformId == ClientDevicePlatform.Ios) && s.SessionSourceId == UserSessionSource.AUTO_DeviceUID)
-                .FirstOrDefaultAsync(cancellationToken);
-            var now = DateTime.UtcNow;
-            User? user;
-            if (session is null)
-            {
-                user = await repository.GetQueryable<User>(e => e.UserSourceId == UserSource.AUTO_DeviceUID && e.UserName == clientSideInfo.DeviceUID).FirstOrDefaultAsync(cancellationToken);
-                var gpsDevice = await repository.GetQueryable<GpsDevice>(e => e.ProviderId == GpsDeviceProvider.Mobile && e.SerialNumber == clientSideInfo.DeviceUID).FirstOrDefaultAsync(cancellationToken);
-                if (user is null)
-                {
-                    user = new User
-                    {
-                        DisplayName = clientSideInfo.DeviceUID,
-                        FullName = clientSideInfo.DeviceUID,
-                        UserName = clientSideInfo.DeviceUID,
-                        UserSourceId = UserSource.AUTO_DeviceUID,
-                        StatusId = UserStatus.Active
-                    };
-                    repository.Create(user);
-                    await repository.SaveAsync(cancellationToken);
-                    user.DisplayName = "User_" + user.Id;
-                    user.FullName = user.DisplayName;
-                    user.StatusId = UserStatus.Active;
-                    activity?.SetTag("app.auto_device.new_user", true);
-                }
-                else
-                {
-                    if (user.StatusId != UserStatus.Active)
-                    {
-                        activity?.SetStatus(ActivityStatusCode.Error, "user not active");
-                        return new AuthResult(AuthStatus.Unauthenticated);
-                    }
-                }
-
-                session = new UserSession
-                {
-                    UserId = user.Id,
-                    StatusId = UserSessionStatus.Active,
-                    SessionSourceId = UserSessionSource.AUTO_DeviceUID,
-                };
-                repository.Create(session);
-                await convertClientSideInfoToSessionClientInfo(clientSideInfo, session.ClientInfo);
-                session.Token.ExpirationTime = now.AddDays(tokenService.RefreshTokenDays);
-                if (gpsDevice is null)
-                {
-                    gpsDevice = new GpsDevice
-                    {
-                        SerialNumber = clientSideInfo.DeviceUID,
-                        UserId = user.Id,
-                        ProviderId = GpsDeviceProvider.Mobile,
-                        TypeId = convertClientSideInfoToGpsDeviceTypeId(session.ClientInfo),
-                        StatusId = GpsDeviceStatus.Active
-                    };
-                    repository.Create(gpsDevice);
-                    await repository.SaveAsync(cancellationToken);
-                    session.MobileGpsDeviceId = gpsDevice.Id;
-                }
-                else if (gpsDevice.StatusId == GpsDeviceStatus.MobileLogOutInactive)
-                {
-                    gpsDevice.StatusId = GpsDeviceStatus.Active;
-                }
-                else if (gpsDevice.StatusId != GpsDeviceStatus.Active)
-                {
-                    activity?.SetStatus(ActivityStatusCode.Error, "gpsDevice not active");
-                    return new AuthResult(AuthStatus.Unauthenticated);
-                }
-                
-                activity?.SetTag("app.auto_device.new_session", true);
-            }
-            else
-            {
-                activity?.SetTag("app.auto_device.new_user", false);
-                activity?.SetTag("app.auto_device.new_session", false);
-
-                user = await FindActiveUserAsync(session.UserId, cancellationToken);
-                if (user is null)
-                {
-                    activity?.SetStatus(ActivityStatusCode.Error, "user not active");
-                    return new AuthResult(AuthStatus.Unauthenticated);
-                }
-
-                //hack to keep the session alive for auto device users, since they don't have a refresh token, we will extend the expiration time every time they refresh the session
-                if (session.Token.ExpirationTime <= now) session.Token.ExpirationTime = now.AddDays(tokenService.RefreshTokenDays);
-            }
-            refreshSessionClientInfo(clientSideInfo, session.ClientInfo);
-
-            //RotateAsync will update UserSession in DB too
-            return await RotateAsync(session, user!.CompanyId, activity, cancellationToken);
-        }
-
-        /// <param name="sessionId">The sid of a valid access token, when the caller sent one. It is checked first (the token is signed,
-        /// so it identifies the session even after its rotation counter moved on); the refresh cookie is the fallback.
-        /// The cookie's mac must be valid for the session, but its counter does not matter: ending a session is the safe direction.</param>
-        public async Task LogoutAsync(string? rotationKey, int? sessionId, CancellationToken cancellationToken)
-        {
-            UserSession? session = null;
-            if (sessionId is int sid)
-            {
-                session = await FindActiveSessionByIdAsync(sid, cancellationToken);
-            }
-            if (session is null && TokenService.TryParseRotationKey(rotationKey, out var cookieSessionId, out var cookieCounter, out var mac))
-            {
-                var candidate = await FindActiveSessionByIdAsync(cookieSessionId, cancellationToken);
-                if (candidate is not null && HasValidMac(candidate, cookieSessionId, cookieCounter, mac))
-                {
-                    session = candidate;
-                }
-            }
+            var session = await repository.GetQueryable<UserSession>(s => s.SessionKey == sessionKey && s.StatusId == UserSessionStatus.Active).FirstOrDefaultAsync(cancellationToken);
             if (session is not null)
             {
-                await EndSessionAsync(session, UserSessionStatus.LoggedOutByUser, cancellationToken);
+                await endSessionAsync(session, UserSessionStatus.LoggedOutByUser, cancellationToken);
                 logger.LogInformation("Session {SessionId} logged out", session.Id);
             }
         }
-
+        public async Task LogoutCookieAsync(string cookieKey, CancellationToken cancellationToken)
+        {
+            if (TokenService.TryParseRotationKey(cookieKey) is RotationKey rotationKey)
+            {
+                await LogoutAsync(rotationKey.SessionKey, cancellationToken);
+            }
+            
+        }
         // Closes the session with the given status; a phone that no other active session uses is marked logged out.
-        private async Task EndSessionAsync(UserSession session, short statusId, CancellationToken cancellationToken)
+        private async Task endSessionAsync(UserSession session, short statusId, CancellationToken cancellationToken)
         {
             session.StatusId = statusId;
             if (session.MobileGpsDeviceId is not null)
@@ -410,201 +424,6 @@ namespace api_server.Auth
                 }
             }
             await repository.SaveAsync(cancellationToken);
-        }
-
-        private Task<UserSession?> FindActiveSessionByIdAsync(int sessionId, CancellationToken cancellationToken) =>
-            repository
-                .GetQueryable<UserSession>(s => s.Id == sessionId && s.StatusId == UserSessionStatus.Active)
-                .FirstOrDefaultAsync(cancellationToken);
-
-        // Auto-device sessions have no salt and never use the cookie, so none can ever pass here.
-        private bool HasValidMac(UserSession session, int presentedSessionId, int presentedCounter, byte[] presentedMac) =>
-            !string.IsNullOrEmpty(session.Token.KeySalt) &&
-            tokenService.IsValidRotationMac(presentedSessionId, presentedCounter, session.Token.KeySalt, presentedMac);
-
-        /// <summary>
-        /// Cookie = "{sessionId}.{counter}.{mac}". The session is found by primary key and the mac is checked
-        /// before anything else happens to it, so a guessed or forged cookie can neither log anyone out nor
-        /// reach another session. A valid mac with an old or impossible counter means the key was replayed
-        /// (or the database lost rotations): the session is revoked.
-        /// </summary>
-        public async Task<AuthResult> RefreshLoginAsync(string? rotationKey, ClientSideInfo clientSideInfo, CancellationToken cancellationToken)
-        {
-            using var activity = Telemetry.Source.StartActivity("auth.login.refresh_session");
-
-            if (string.IsNullOrWhiteSpace(rotationKey))
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, "no rotation key");
-                return new AuthResult(AuthStatus.Unauthenticated);
-            }
-
-            if (!TokenService.TryParseRotationKey(rotationKey, out var sessionId, out var counter, out var mac))
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, "malformed rotation key");
-                return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
-            }
-
-            var session = await repository
-                .GetQueryable<UserSession>(s => s.Id == sessionId)
-                .FirstOrDefaultAsync(cancellationToken);
-            if (session is null || !HasValidMac(session, sessionId, counter, mac))
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, "rotation key not valid");
-                logger.LogWarning("Session rotation rejected: refresh key for session {SessionId} is not valid", sessionId);
-                return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
-            }
-
-            activity?.SetTag("app.session.id", session.Id);
-            return await EvaluateRefreshAsync(session, counter, clientSideInfo, activity, afterConflict: false, cancellationToken);
-        }
-
-        // The presented key is genuine (valid mac); what it means depends on how its counter compares with the session's.
-        // afterConflict: the row was just reloaded because a concurrent save won, so rotating again is not attempted.
-        private async Task<AuthResult> EvaluateRefreshAsync(UserSession session, int presentedCounter, ClientSideInfo clientSideInfo, Activity? activity, bool afterConflict, CancellationToken cancellationToken)
-        {
-            if (session.StatusId != UserSessionStatus.Active)
-            {
-                activity?.SetStatus(ActivityStatusCode.Error, "session not active");
-                return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
-            }
-
-            var now = DateTime.UtcNow;
-            var current = session.Token.RotationCounter;
-
-            if (presentedCounter == current)
-            {
-                if (afterConflict)
-                {
-                    // Reloaded and still unrotated: something else touched the row, nothing rotated it. Not a
-                    // verdict on the key, so the cookie stays and the client simply tries again.
-                    return new AuthResult(AuthStatus.Unauthenticated);
-                }
-
-                var user = await FindActiveUserAsync(session.UserId, cancellationToken);
-                if (user is null)
-                {
-                    activity?.SetStatus(ActivityStatusCode.Error, "user not active");
-                    logger.LogWarning("Session rotation rejected: user {UserId} of session {SessionId} is not active", session.UserId, session.Id);
-                    return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
-                }
-                refreshSessionClientInfo(clientSideInfo, session.ClientInfo);
-                var rotated = await TryRotateAsync(session, user.CompanyId, activity, cancellationToken);
-                // null: a concurrent refresh with the same key won the save. The row was reloaded; the loser now
-                // holds the previous counter, which the duplicate path below answers with the winner's key.
-                return rotated ?? await EvaluateRefreshAsync(session, presentedCounter, clientSideInfo, activity, afterConflict: true, cancellationToken);
-            }
-
-            // The key we JUST superseded, inside the reuse-grace window: almost certainly a harmless race
-            // (two tabs, an app relaunch, a retried request). Hand back the current state without rotating.
-            if (presentedCounter == current - 1
-                && session.Token.LatestRefreshTime >= now - tokenService.RefreshReuseGraceWindow
-                && session.Token.ExpirationTime > now)
-            {
-                var user = await FindActiveUserAsync(session.UserId, cancellationToken);
-                if (user is null)
-                {
-                    activity?.SetStatus(ActivityStatusCode.Error, "user not active");
-                    return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
-                }
-                activity?.SetTag("app.session.reuse_grace_window_hit", true);
-                return await BuildSuccessAsync(session, user.CompanyId, cancellationToken);
-            }
-
-            // Anything else: an older key (the legitimate holder already moved on, so this is a copy being
-            // replayed) or a counter ahead of the database (rotations were lost, an old key is current again).
-            // Either way the cookie can no longer be trusted: end the session.
-            return await RevokeForKeyReuseAsync(session, presentedCounter, activity, cancellationToken);
-        }
-
-        private async Task<AuthResult> RevokeForKeyReuseAsync(UserSession session, int presentedCounter, Activity? activity, CancellationToken cancellationToken)
-        {
-            Telemetry.SessionKeyReuseRevocations.Add(1);
-            activity?.SetStatus(ActivityStatusCode.Error, "refresh key reused");
-            logger.LogWarning("Session {SessionId} of user {UserId} revoked: refresh key with counter {PresentedCounter} replayed (current counter {CurrentCounter})",
-                session.Id, session.UserId, presentedCounter, session.Token.RotationCounter);
-            try
-            {
-                await EndSessionAsync(session, UserSessionStatus.RevokedKeyReuse, cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                // Someone else changed the session in the same instant (a logout, most likely); it is
-                // ending either way, and the caller is refused regardless.
-                logger.LogInformation("Revocation of session {SessionId} raced with another update", session.Id);
-            }
-            return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
-        }
-
-        // Returns null when a concurrent save won (the row is then reloaded from the database), otherwise the outcome.
-        private async Task<AuthResult?> TryRotateAsync(UserSession session, int? companyId, Activity? activity, CancellationToken cancellationToken)
-        {
-            var now = DateTime.UtcNow;
-            if (session.Token.ExpirationTime <= now)
-            {
-                session.StatusId = UserSessionStatus.Expired;
-                await repository.SaveAsync(cancellationToken);
-
-                logger.LogInformation("Session rotation rejected: session {SessionId} expired", session.Id);
-                activity?.SetStatus(ActivityStatusCode.Error, $"Session rotation rejected: session {session.Id} expired");
-                return new AuthResult(AuthStatus.Unauthenticated, ClearCookie: true);
-            }
-
-            // Rotate: the previous counter's key still works for the reuse-grace window, then it's dead for good.
-            session.Token.RotationCounter++;
-            session.Token.LatestRefreshTime = now;
-            // Idle sessions live on while they are used; persistent ones keep their fixed expiry.
-            if (!session.Token.IsPersistent)
-            {
-                session.Token.ExpirationTime = IdleExpiration(now, session.Token.CreationTime);
-            }
-            try
-            {
-                await repository.SaveAsync(cancellationToken);
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                // LatestUpdate (stamped by a DB trigger) changed under us: another request saved this session first.
-                logger.LogInformation("Session {SessionId} rotation lost a race with a concurrent update; reloading", session.Id);
-                await repository.DbContext.Entry(session).ReloadAsync(cancellationToken);
-                return null;
-            }
-
-            return await BuildSuccessAsync(session, companyId, cancellationToken);
-        }
-
-        // The auto-device refresh has no cookie to reconcile: if it loses the race it just answers from the reloaded row.
-        private async Task<AuthResult> RotateAsync(UserSession session, int? companyId, Activity? activity, CancellationToken cancellationToken) =>
-            await TryRotateAsync(session, companyId, activity, cancellationToken)
-                ?? await BuildSuccessAsync(session, companyId, cancellationToken);
-
-        // now + idle window, but never past the absolute cap counted from login.
-        private DateTime IdleExpiration(DateTime now, DateTime creationTime)
-        {
-            var idleEnd = now + tokenService.SessionOnlyIdleLifetime;
-            var maxEnd = creationTime + tokenService.SessionOnlyMaxLifetime;
-            return idleEnd < maxEnd ? idleEnd : maxEnd;
-        }
-
-        // A deactivated user's sessions must stop refreshing even though the sessions themselves are still Active.
-        private Task<User?> FindActiveUserAsync(int userId, CancellationToken cancellationToken) =>
-            repository
-                .GetQueryable<User>(u => u.Id == userId && u.StatusId == UserStatus.Active)
-                .FirstOrDefaultAsync(cancellationToken);
-
-        private async Task<AuthResult> BuildSuccessAsync(UserSession session, int? companyId, CancellationToken cancellationToken)
-        {
-            // Looked up on every token issue/renewal so the claim follows team changes;
-            // no team -> no claim (a null is never written into the JWT).
-            //var teamId = await teamService.GetUserActiveTeamIdAsync(session.UserId, cancellationToken);
-            return new(AuthStatus.Success,
-                new UserSessionCheckResponse
-                {
-                    AccessToken = tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), session.MobileGpsDeviceId?.ToString(), companyId: companyId?.ToString()),
-                    UserId = session.UserId,
-                    SessionId = session.Id,
-                },
-                tokenService.CreateRotationKey(session.Id, session.Token.RotationCounter, session.Token.KeySalt),
-                CookieExpiresUtc: session.Token.IsPersistent ? session.Token.ExpirationTime : null);
         }
 
         /// <summary>
@@ -645,7 +464,7 @@ namespace api_server.Auth
         {
             using var activity = Telemetry.Source.StartActivity("auth.password_reset.request");
 
-            var user = await FindUserForPasswordResetAsync(identifier, cancellationToken);
+            var user = await repository.GetQueryable<User>(u => u.UserName == identifier && u.StatusId == UserStatus.Active && u.UserSourceId != UserSource.AUTO_DeviceUID).AsNoTracking().FirstOrDefaultAsync();
             if (user is null)
             {
                 return;
@@ -696,33 +515,28 @@ namespace api_server.Auth
         public async Task<RegisterUserResult> RegisterUserAsync(RegisterUserData request, short userSourceId, ClientSideInfo? clientSideInfo, string? clientIp, CancellationToken cancellationToken)
         {
             using var activity = Telemetry.Source.StartActivity("auth.register");
+            var errors = new Dictionary<string, string[]>();
 
-            var emailMode = _authOptions.EmailMode == EmailUsageMode.UniqueEmail;
             var email = request.Email?.Trim();
             var displayName = request.DisplayName?.Trim();
             var fullName = request.FullName?.Trim();
             var phone = request.Phone?.Trim();
-            // In unique-email mode the e-mail is the login name and any supplied user name is ignored.
-            var userName = emailMode ? email : request.UserName?.Trim();
+            var userName = request.UserName?.Trim();
 
-            var errors = new Dictionary<string, string[]>();
-            if (string.IsNullOrEmpty(email))
+            if (_authOptions.EmailMode == EmailUsageMode.UniqueEmail )
             {
-                errors[nameof(request.Email)] = ["E-mail is required."];
+                if (string.IsNullOrEmpty(email))
+                {
+                    errors[nameof(request.Email)] = ["E-mail is required."];
+                }
+                else if (email.Length > MaxEmailLength || !IsValidEmail(email))
+                {
+                    errors[nameof(request.Email)] = ["E-mail is not a valid address."];
+                }
+                else userName = email;
+
             }
-            else if (email.Length > MaxEmailLength || !IsValidEmail(email))
-            {
-                errors[nameof(request.Email)] = ["E-mail is not a valid address."];
-            }
-            if (string.IsNullOrEmpty(displayName))
-            {
-                errors[nameof(request.DisplayName)] = ["Display name is required."];
-            }
-            else if (displayName.Length > MaxNameLength)
-            {
-                errors[nameof(request.DisplayName)] = [$"Display name must be at most {MaxNameLength} characters."];
-            }
-            if (!emailMode)
+            else
             {
                 if (string.IsNullOrEmpty(userName))
                 {
@@ -732,6 +546,28 @@ namespace api_server.Auth
                 {
                     errors[nameof(request.UserName)] = [$"User name must be at most {MaxNameLength} characters."];
                 }
+                if (!string.IsNullOrWhiteSpace(email))
+                {
+                    if (email.Length > MaxEmailLength || !IsValidEmail(email))
+                    {
+                        errors[nameof(request.Email)] = ["E-mail is not a valid address."];
+                    }
+                }
+            }
+            var taken = await repository.GetQueryable<User>(u => u.StatusId == UserStatus.Active && u.UserName == userName).AnyAsync(cancellationToken);
+            if (taken)
+            {
+                if (_authOptions.EmailMode == EmailUsageMode.UniqueEmail) errors[nameof(request.UserName)] = ["A user with this e-mail already exists."];
+                else errors[nameof(request.UserName)] = ["A user with this user name already exists."];
+            }
+
+            if (string.IsNullOrEmpty(displayName))
+            {
+                errors[nameof(request.DisplayName)] = ["Display name is required."];
+            }
+            else if (displayName.Length > MaxNameLength)
+            {
+                errors[nameof(request.DisplayName)] = [$"Display name must be at most {MaxNameLength} characters."];
             }
             if (fullName is { Length: > MaxNameLength })
             {
@@ -746,31 +582,6 @@ namespace api_server.Auth
                 return new RegisterUserResult(RegisterUserStatus.Invalid, errors);
             }
 
-            // Only Active users hold a name: pending registrations and deactivated accounts don't count.
-            if (emailMode)
-            {
-                var lowerEmail = email!.ToLowerInvariant();
-                var taken = await repository
-                    .GetQueryable<User>(u => u.StatusId == UserStatus.Active &&
-                        ((u.Email != null && u.Email.ToLower() == lowerEmail) || u.UserName.ToLower() == lowerEmail))
-                    .AnyAsync(cancellationToken);
-                if (taken)
-                {
-                    return new RegisterUserResult(RegisterUserStatus.Conflict,
-                        new Dictionary<string, string[]> { [nameof(request.Email)] = ["A user with this e-mail already exists."] });
-                }
-            }
-            else
-            {
-                var taken = await repository
-                    .GetQueryable<User>(u => u.StatusId == UserStatus.Active && u.UserName == userName)
-                    .AnyAsync(cancellationToken);
-                if (taken)
-                {
-                    return new RegisterUserResult(RegisterUserStatus.Conflict,
-                        new Dictionary<string, string[]> { [nameof(request.UserName)] = ["A user with this user name already exists."] });
-                }
-            }
 
             var pendingPrefix = Guid.NewGuid().ToString("N") + "_";
 
@@ -796,8 +607,8 @@ namespace api_server.Auth
                     FullName = string.IsNullOrEmpty(fullName) ? displayName! : fullName,
                     // In e-mail mode the e-mail is the unique field and is prefixed like the user
                     // name; otherwise it is plain data.
-                    Email = emailMode ? pendingPrefix + email : email,
-                    Phone = string.IsNullOrEmpty(phone) ? null : phone,
+                    Email = string.IsNullOrWhiteSpace(email) ? null : email,
+                    Phone = string.IsNullOrWhiteSpace(phone) ? null : phone,
                     UserSourceId = userSourceId,
                     StatusId = UserStatus.JustCreated,
                 };
@@ -1019,7 +830,7 @@ namespace api_server.Auth
                 var lower = value.ToLowerInvariant();
                 return repository
                     .GetQueryable<User>(u => u.Id != excludeUserId && u.StatusId == UserStatus.Active &&
-                        ((u.Email != null && u.Email.ToLower() == lower) || u.UserName.ToLower() == lower))
+                        ((u.Email != null && u.Email.ToLower() == lower) || u.UserName == lower))
                     .AnyAsync(cancellationToken);
             }
             return repository
@@ -1038,10 +849,10 @@ namespace api_server.Auth
             var query = repository.GetQueryable<User>(u =>
                 u.Id != excludeUserId && u.StatusId == UserStatus.JustCreated && (u.UserSourceId == UserSource.Registration_Portal || u.UserSourceId == UserSource.Registration_App));
 
+            var lowerSuffix = "_" + value.ToLowerInvariant();
             List<User> candidates;
             if (byEmail)
             {
-                var lowerSuffix = "_" + value.ToLowerInvariant();
                 candidates = await query
                     .Where(u => u.Email != null && u.Email.ToLower().EndsWith(lowerSuffix))
                     .ToListAsync(cancellationToken);
@@ -1050,54 +861,14 @@ namespace api_server.Auth
                     .ToList();
             }
 
-            var suffix = "_" + value;
+            // UserName's own collation is non-deterministic, which PostgreSQL before 18 rejects in LIKE,
+            // so the suffix match runs under the database's default (deterministic) collation.
             candidates = await query
-                .Where(u => u.UserName.EndsWith(suffix))
+                .Where(u => EF.Functions.Collate(u.UserName, "default").ToLower().EndsWith(lowerSuffix))
                 .ToListAsync(cancellationToken);
             return candidates
-                .Where(u => TryStripPendingPrefix(u.UserName, out var v) && v == value)
+                .Where(u => TryStripPendingPrefix(u.UserName, out var v) && string.Equals(v, value, StringComparison.OrdinalIgnoreCase))
                 .ToList();
-        }
-
-        // What the identifier means depends on Auth:EmailMode: an e-mail address when e-mails are
-        // unique, otherwise a user name (the only thing then trusted to be unique). Only Active
-        // users are reachable this way — a pending registration's fields carry a prefix, so it
-        // cannot match, and its owner simply registers again. Anything ambiguous or missing
-        // resolves to "no user".
-        private async Task<User?> FindUserForPasswordResetAsync(string? identifier, CancellationToken cancellationToken)
-        {
-            var normalized = identifier?.Trim();
-            if (string.IsNullOrEmpty(normalized))
-            {
-                return null;
-            }
-
-            var query = repository.GetQueryable<User>(u =>
-                u.StatusId == UserStatus.Active && u.UserSourceId != UserSource.AUTO_DeviceUID);
-
-            List<User> matches;
-            if (_authOptions.EmailMode == EmailUsageMode.UniqueEmail)
-            {
-                var normalizedEmail = normalized.ToLowerInvariant();
-                matches = await query
-                    .Where(u => u.Email != null && u.Email.ToLower() == normalizedEmail)
-                    .Take(2)
-                    .ToListAsync(cancellationToken);
-            }
-            else
-            {
-                matches = await query
-                    .Where(u => u.UserName == normalized)
-                    .Take(2)
-                    .ToListAsync(cancellationToken);
-            }
-
-            if (matches.Count > 1)
-            {
-                logger.LogWarning("Password reset skipped: identifier matches several users although {Mode} was configured", _authOptions.EmailMode);
-                return null;
-            }
-            return matches.SingleOrDefault();
         }
 
         private static string HashResetKey(string resetKey) =>

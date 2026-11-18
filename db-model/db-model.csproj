@@ -12,7 +12,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="AppStructure\refs\" />
     <Folder Include="Map\refs\" />
     <Folder Include="Auth\" />
   </ItemGroup>

@@ -19,11 +19,138 @@ namespace main_database.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
+                .HasAnnotation("Npgsql:CollationDefinition:case_insensitive", "und-u-ks-level2,und-u-ks-level2,icu,False")
                 .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("db_model.AppStructure.ApplicationMenu", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short>("MenuKind")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text");
+
+                    b.Property<int?>("OwnerCompanyId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("application_menu", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.AppStructure.ApplicationMenuItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ApplicationPageId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("DividerAfter")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("DividerBefore")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Icon")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("MenuId")
+                        .HasColumnType("integer");
+
+                    b.Property<short?>("OrderBy")
+                        .HasColumnType("smallint");
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Path")
+                        .HasColumnType("text");
+
+                    b.Property<short?>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("application_menu_item", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.AppStructure.ApplicationPage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<short>("ClientApplicationId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("CodeClassName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<short>("CodeSyncState")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<bool?>("IsNotForMenu")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("KbItemKey")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("application_page", (string)null);
+                });
 
             modelBuilder.Entity("db_model.Auth.SettingsEntry", b =>
                 {
@@ -1607,7 +1734,8 @@ namespace main_database.Migrations
 
                     b.Property<string>("UserName")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasColumnType("text")
+                        .UseCollation("case_insensitive");
 
                     b.Property<short>("UserSourceId")
                         .HasColumnType("smallint");
@@ -1617,6 +1745,8 @@ namespace main_database.Migrations
                     b.HasIndex("AvatarImageId");
 
                     b.HasIndex("GovIDImageId");
+
+                    b.HasIndex("UserName");
 
                     b.ToTable("user", (string)null);
                 });
@@ -1812,6 +1942,36 @@ namespace main_database.Migrations
                     b.ToTable("user_status", (string)null);
                 });
 
+            modelBuilder.Entity("exs.modelCommons.AppStructure.ClientApplication", b =>
+                {
+                    b.Property<short>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<short>("Id"));
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Uid")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("client_application", (string)null);
+                });
+
             modelBuilder.Entity("exs.modelCommons.AppStructure.ClientDevicePlatform", b =>
                 {
                     b.Property<short>("Id")
@@ -1847,6 +2007,9 @@ namespace main_database.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -1855,6 +2018,10 @@ namespace main_database.Migrations
 
                     b.Property<int?>("MobileGpsDeviceId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("SessionKey")
+                        .IsRequired()
+                        .HasColumnType("text");
 
                     b.Property<short>("SessionSourceId")
                         .HasColumnType("smallint");
@@ -1869,7 +2036,7 @@ namespace main_database.Migrations
                         {
                             b1.IsRequired();
 
-                            b1.Property<string>("AppUID")
+                            b1.Property<string>("AppHash")
                                 .IsRequired()
                                 .HasColumnType("text");
 
@@ -1877,15 +2044,14 @@ namespace main_database.Migrations
                                 .IsRequired()
                                 .HasColumnType("text");
 
-                            b1.Property<string>("CodeVersion")
-                                .IsRequired()
-                                .HasColumnType("text");
-
-                            b1.Property<string>("DeviceUID")
-                                .IsRequired()
-                                .HasColumnType("text");
+                            b1.Property<short>("ClientApplicationId")
+                                .HasColumnType("smallint");
 
                             b1.Property<string>("FCM_FID")
+                                .IsRequired()
+                                .HasColumnType("text");
+
+                            b1.Property<string>("PlatformDetails")
                                 .IsRequired()
                                 .HasColumnType("text");
 
@@ -1918,6 +2084,9 @@ namespace main_database.Migrations
                         });
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SessionKey")
+                        .IsUnique();
 
                     b.ToTable("user_session", (string)null);
                 });

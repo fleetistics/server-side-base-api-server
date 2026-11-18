@@ -16,7 +16,8 @@ namespace api_server.Users
 
 	/// <summary>
 	/// Partial-update body for PATCH /api/users/{userId}: only fields the client
-	/// actually changed are present. UserName/StatusId are excluded — UpdateUserAsync
+	/// actually changed are present. Callers are checked by <see cref="IUserService.CanPatchUserAsync"/>.
+	/// UserName/StatusId are excluded — UpdateUserAsync
 	/// (the full-PUT path) never touches them either.
 	/// </summary>
 	public class UserPatchDto : InboundMediaAttachableDto, IValidatableObject
@@ -25,6 +26,7 @@ namespace api_server.Users
 		public Optional<string?> FullName { get; set; }
 		public Optional<string?> Phone { get; set; }
 		public Optional<string?> Email { get; set; }
+		public Optional<bool> IsMfaEnabled { get; set; }
 
 		// Optional<T> bypasses the implicit NRT-required model validation UserDto gets
 		// for free (the wrapper is always structurally "present"), so the one rule that
