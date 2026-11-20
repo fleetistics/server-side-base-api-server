@@ -28,9 +28,9 @@ namespace api_server.Auth
     /// value), the access token and the user id. <c>CookieExpiresUtc</c> is null for a session cookie.
     /// The key fields and the access token are secrets, so ToString is overridden to leave them out.
     /// </summary>
-    public sealed record SessionCheckResult(string SessionKey, int RotationCounter, string SessionSign, string CompositeCookieKey, DateTime? CookieExpiresUtc, int UserId, string AccessToken)
+    public sealed record SessionCheckResult(string SessionKey, int RotationCounter, string SessionSign, string CompositeCookieKey, DateTime? CookieExpiresUtc, int UserId, int? CompanyId, string AccessToken)
     {
-        public override string ToString() => $"{nameof(SessionCheckResult)} {{ UserId = {UserId} }}";
+        public override string ToString() => $"{nameof(SessionCheckResult)} {{ UserId = {UserId}, CompanyId = {CompanyId} }}";
     }
 
     public enum RegisterUserStatus
@@ -83,6 +83,7 @@ namespace api_server.Auth
                 key.CompositeCookieKey,
                 session.Token.IsPersistent ? session.Token.ExpirationTime : null,
                 session.UserId,
+                session.CompanyId,
                 tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), session.MobileGpsDeviceId?.ToString(), companyId: session.CompanyId?.ToString())
 
             );
@@ -93,7 +94,7 @@ namespace api_server.Auth
 
         /// <param name="rememberMe">True: fixed lifetime and persistent cookie. False: idle-expiring session and session cookie.</param>
         /// <param name="clientIp">Part of the failed-login throttle key and of the log; null when unknown.</param>
-        public async Task<(LoginStatus, SessionCheckResult?)> LoginAsync(string userName, string password, bool rememberMe, short userSessionSourceId, string? gpsDeviceSerial, ClientSideInfo clientSideInfo, string? clientIp, CancellationToken cancellationToken)
+        public async Task<(LoginStatus, SessionCheckResult?)> LoginAsync(string userName, string password, bool rememberMe, short userSessionSourceId, string? gpsDeviceSerial, ClientSideInfo clientSideInfo, string? clientIp, bool autoLoginMode, CancellationToken cancellationToken)
         {
             using var activity = Telemetry.Source.StartActivity("auth.login");
 
@@ -121,30 +122,53 @@ namespace api_server.Auth
             var user = await repository
                 .GetQueryable<User>(u => u.StatusId == UserStatus.Active && u.UserName == name)
                 .FirstOrDefaultAsync(cancellationToken);
-
-            // One Argon2 verification on every path — user found or not, password set or not,
-            // right or wrong — so the response time says nothing about which of those it was.
-            var passwordMatches = passwordHasher.VerifyEqualTime(user?.Password, password);
-
-            if (user is null || !passwordMatches)
+            if (user is null && autoLoginMode)
             {
-                Telemetry.LoginFailures.Add(1);
-                activity?.SetStatus(ActivityStatusCode.Error, "invalid credentials");
-
-                // The reason is for the log only; the caller always gets the same answer.
-                var reason = user is null ? "UnknownOrInactiveUser" : user.Password is null ? "NoPasswordSet" : "WrongPassword";
-                var (failures, lockedNow) = loginThrottle.RegisterFailure(throttleKey);
-                logger.LogWarning("Failed login attempt for {UserName} from {ClientIp}: {Reason} (UserId {UserId}, failure {FailureCount} of {MaxFailures})",
-                    ForLog(name), clientIp, reason, user?.Id, failures, loginThrottle.MaxFailedAttempts);
-                if (lockedNow)
+                // Auto-login mode: the user name is a device UID, and the user may not exist yet. Create it
+                // with no password (the device will set one) and log in. The UID is unique across all users,
+                // so no prefixing is needed.
+                user = new User
                 {
-                    Telemetry.LoginLockouts.Add(1);
-                    logger.LogWarning("Account {UserName} locked for {LockoutMinutes} min after {FailureCount} failed login attempts (last from {ClientIp})",
-                        ForLog(name), _authOptions.LoginLockout.TotalMinutes, failures, clientIp);
-                }
-                return (LoginStatus.InvalidCredentials, null);
+                    UserName = name,
+                    DisplayName = name,
+                    FullName = name,
+                    UserSourceId = UserSource.AUTO_DeviceUID,
+                    StatusId = UserStatus.JustCreated,
+                };
+                repository.Create(user);
+                await repository.SaveAsync(cancellationToken);
+                user.DisplayName = "User_" + user.Id;
+                user.FullName = user.DisplayName;
+                user.Password = passwordHasher.Hash(password);
+                user.StatusId = UserStatus.Active;
+                logger.LogInformation("Auto-login created user {UserId} for device UID {UserName}", user.Id, ForLog(name));
+                await repository.SaveAsync(cancellationToken);
             }
+            else
+            {
+                // One Argon2 verification on every path — user found or not, password set or not,
+                // right or wrong — so the response time says nothing about which of those it was.
+                var passwordMatches = passwordHasher.VerifyEqualTime(user?.Password, password);
 
+                if (user is null || !passwordMatches)
+                {
+                    Telemetry.LoginFailures.Add(1);
+                    activity?.SetStatus(ActivityStatusCode.Error, "invalid credentials");
+
+                    // The reason is for the log only; the caller always gets the same answer.
+                    var reason = user is null ? "UnknownOrInactiveUser" : user.Password is null ? "NoPasswordSet" : "WrongPassword";
+                    var (failures, lockedNow) = loginThrottle.RegisterFailure(throttleKey);
+                    logger.LogWarning("Failed login attempt for {UserName} from {ClientIp}: {Reason} (UserId {UserId}, failure {FailureCount} of {MaxFailures})",
+                        ForLog(name), clientIp, reason, user?.Id, failures, loginThrottle.MaxFailedAttempts);
+                    if (lockedNow)
+                    {
+                        Telemetry.LoginLockouts.Add(1);
+                        logger.LogWarning("Account {UserName} locked for {LockoutMinutes} min after {FailureCount} failed login attempts (last from {ClientIp})",
+                            ForLog(name), _authOptions.LoginLockout.TotalMinutes, failures, clientIp);
+                    }
+                    return (LoginStatus.InvalidCredentials, null);
+                }
+            }
             loginThrottle.ResetKey(throttleKey);
             activity?.SetTag("app.user.id", user.Id);
             
@@ -162,7 +186,7 @@ namespace api_server.Auth
                 {
                     KeySalt = TokenService.GenerateKey(),
                     RotationCounter = 0,
-                    IsPersistent = rememberMe,
+                    IsPersistent = autoLoginMode? autoLoginMode:rememberMe,
                     CreationTime = now,
                     ExpirationTime = rememberMe
                         ? now.AddDays(tokenService.RefreshTokenDays)
@@ -179,14 +203,11 @@ namespace api_server.Auth
 
             if ( !string.IsNullOrWhiteSpace(gpsDeviceSerial))
             {
-
-                var gpsDevice = await repository.GetQueryable<GpsDevice>(e => e.ProviderId == GpsDeviceProvider.Mobile && e.SerialNumber == gpsDeviceSerial).FirstOrDefaultAsync(cancellationToken);
+                var devSerial = user.Id.ToString() + "-|-" + gpsDeviceSerial.Trim();
+                var gpsDevice = await repository.GetQueryable<GpsDevice>(e => e.ProviderId == GpsDeviceProvider.Mobile && e.SerialNumber == devSerial).FirstOrDefaultAsync(cancellationToken);
                 if (gpsDevice is null)
                 {
-                    if (gpsDeviceSerial.Length > 100)
-                    {
 
-                    }
                     int? gpsDeviceTypeId;
                     switch (session.ClientInfo.PlatformId)
                     {
@@ -202,7 +223,7 @@ namespace api_server.Auth
                     }
                     gpsDevice = new GpsDevice
                     {
-                        SerialNumber = gpsDeviceSerial,
+                        SerialNumber = devSerial,
                         UserId = user.Id,
                         CompanyId = user.CompanyId,
                         ProviderId = GpsDeviceProvider.Mobile,

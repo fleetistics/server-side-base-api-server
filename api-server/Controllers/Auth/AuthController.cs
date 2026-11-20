@@ -26,7 +26,7 @@ namespace api_server.Controllers.Auth
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
         public Task<IActionResult> PortalLogin([FromBody] LoginRequestData request, CancellationToken cancellationToken) =>
-            LoginCommon(request, UserSessionSource.Login_Portal, useCookie: true, cancellationToken);
+            LoginCommon(request, UserSessionSource.Login_Portal, useCookie: true, autoLoginMode:false, cancellationToken);
 
         // No cookie here: the app keeps the key in its own secure storage and gets it in the body.
         [HttpPost("/api/auth/app_login")]
@@ -37,13 +37,22 @@ namespace api_server.Controllers.Auth
         [ProducesResponseType(StatusCodes.Status409Conflict)]
         [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
         public Task<IActionResult> AppLogin([FromBody] LoginRequestData request, CancellationToken cancellationToken) =>
-            LoginCommon(request, UserSessionSource.Login_App, useCookie: false, cancellationToken);
-
-        private async Task<IActionResult> LoginCommon(LoginRequestData request, short userSessionSourceId, bool useCookie, CancellationToken cancellationToken)
+            LoginCommon(request, UserSessionSource.Login_App, useCookie: false, autoLoginMode:false, cancellationToken);
+        // No cookie here: the app keeps the key in its own secure storage and gets it in the body.
+        [HttpPost("/api/auth/app_auto_login")]
+        [AllowAnonymous]
+        [EnableRateLimiting("login")] // same bucket as the portal login: one budget per client IP
+        [ProducesResponseType(typeof(LoginResponseData), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        public Task<IActionResult> AppAutoLogin([FromBody] LoginRequestData request, CancellationToken cancellationToken) =>
+            LoginCommon(request, UserSessionSource.Login_App, useCookie: false, autoLoginMode: true, cancellationToken);
+        private async Task<IActionResult> LoginCommon(LoginRequestData request, short userSessionSourceId, bool useCookie, bool autoLoginMode, CancellationToken cancellationToken)
         {
             var (status, result)  = await authService.LoginAsync(
                 request.UserName, request.Password, request.RememberMe ?? false, userSessionSourceId, request.GpsDeviceSerial, request.ClientSideInfo,
-                HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+                HttpContext.Connection.RemoteIpAddress?.ToString(), autoLoginMode, cancellationToken);
             if (status == LoginStatus.TooManyAttempts)
             {
                 // Same answer for every name typed, real or not, so this does not reveal accounts.
@@ -83,7 +92,8 @@ namespace api_server.Controllers.Auth
                     AccessToken = result.AccessToken,
                     UserSessionInfo = new UserSessionInfoDto
                     {
-                        UserId = result.UserId
+                        UserId = result.UserId,
+                        CompanyId = result.CompanyId
                     }
                 });
 
@@ -135,7 +145,8 @@ namespace api_server.Controllers.Auth
                     SessionSign = result.SessionSign,
                     UserSessionInfo = new UserSessionInfoDto
                     {
-                        UserId = result.UserId
+                        UserId = result.UserId,
+                        CompanyId = result.CompanyId
                     }
                 });
             }
@@ -255,7 +266,7 @@ namespace api_server.Controllers.Auth
 
         // Always 204, whether or not a matching user exists — the response must not reveal
         // which accounts are registered. The key is delivered out-of-band, never returned.
-        [HttpPost("/api/user/request-password-reset")]
+        [HttpPost("/api/auth/request-password-reset")]
         [AllowAnonymous]
         [EnableRateLimiting("password-reset-request")] // triggers outbound e-mail; per-account cooldown is in AuthService
         [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -265,7 +276,7 @@ namespace api_server.Controllers.Auth
             return NoContent();
         }
 
-        [HttpPost("/api/user/reset-password")]
+        [HttpPost("/api/auth/reset-password")]
         [AllowAnonymous]
         [EnableRateLimiting("password-reset")] // guessing guard for reset keys
         [ProducesResponseType(StatusCodes.Status204NoContent)]
