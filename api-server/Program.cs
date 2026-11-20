@@ -336,7 +336,7 @@ try
     // the first login attempt does not take longer than the rest.
     app.Services.GetRequiredService<PasswordHasher>();
 
-    if (app.Environment.IsDevelopment())
+    if (app.Environment.IsDevelopment() && builder.Configuration.GetValue("Database:MigrateOnStartup", true))
     {
         using var migrationScope = app.Services.CreateScope();
         migrationScope.ServiceProvider.GetRequiredService<MainDatabaseContext>().Database.Migrate();

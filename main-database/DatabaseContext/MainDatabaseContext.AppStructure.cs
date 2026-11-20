@@ -36,6 +36,11 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 				entity.HasKey(e => new { e.Id });
 				entity.Property(e => e.Id).ValueGeneratedOnAdd();
 			});
+			modelBuilder.Entity<Role2MenuItem>(entity =>
+			{
+				entity.ToTable("role2menu_item");
+				entity.HasKey(e => new { e.PermissionRoleId, e.ApplicationMenuItemId });
+			});
 		}
 	}
 }

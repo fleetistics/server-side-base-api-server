@@ -152,6 +152,37 @@ namespace main_database.Migrations
                     b.ToTable("application_page", (string)null);
                 });
 
+            modelBuilder.Entity("db_model.AppStructure.Role2MenuItem", b =>
+                {
+                    b.Property<int>("PermissionRoleId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ApplicationMenuItemId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool?>("CanCreate")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("CanDelete")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("CanEdit")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool?>("CanView")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("PermissionRoleId", "ApplicationMenuItemId");
+
+                    b.ToTable("role2menu_item", (string)null);
+                });
+
             modelBuilder.Entity("db_model.Auth.SettingsEntry", b =>
                 {
                     b.Property<int>("Id")
