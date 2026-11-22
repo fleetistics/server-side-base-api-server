@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using api_server.core;
+using db_model.Companies;
 using exs.notifications_model.Templates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,8 +13,8 @@ namespace api_server.IntegrationTests;
 
 /// <summary>
 /// /api/admin/message-templates (MessageTemplatesAdminController): the developers' endpoints for notification templates.
-/// Admin only: the host issues no role claims yet, so the tests mint an access token with the "admin" role for the seeded
-/// user from the host's own TokenService, in the session the login created.
+/// Portal Admin only (AuthPolicies.PortalAdmin, decided from the database per call): the tests give the seeded user a company
+/// and a role in it, and mint an access token for the company from the host's own TokenService, in the session the login created.
 /// </summary>
 [Collection(ApiCollection.Name)]
 public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
@@ -27,15 +29,40 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
     public ValueTask InitializeAsync() => new(_fixture.ResetDatabaseAsync());
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    private async Task<HttpClient> CreateAdminClientAsync()
+    private Task<HttpClient> CreateAdminClientAsync() => CreateClientWithRoleAsync(AuthPolicies.PortalAdminRole);
+
+    /// <summary>
+    /// A client signed in as the seeded user, working in a new company where they hold the system-wide role with this name.
+    /// </summary>
+    private async Task<HttpClient> CreateClientWithRoleAsync(string roleName)
     {
         var client = _fixture.CreateClient();
         var login = await client.PostAsJsonAsync("/api/auth/login", new { UserName = ApiFixture.TestUserName, Password = ApiFixture.TestPassword });
         login.EnsureSuccessStatusCode();
         var session = await login.Content.ReadFromJsonAsync<ApiFixture.LoginResponse>();
 
+        var companyId = await _fixture.QueryDbAsync(async db =>
+        {
+            var company = new Company { Name = "Test Company", StatusId = 1 };
+            var role = new PermissionRole { Name = roleName, CompanyId = null };
+            db.Set<Company>().Add(company);
+            db.Set<PermissionRole>().Add(role);
+            await db.SaveChangesAsync();
+            db.Set<User2Company>().Add(new User2Company
+            {
+                CompanyId = company.Id,
+                UserId = _fixture.TestUserId,
+                PermissionRoleId = role.Id,
+                StatusId = 2,
+                JoinTypeId = 1,
+                JoinedDate = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+            return company.Id;
+        });
+
         var tokens = _fixture.Services.GetRequiredService<api_server.Auth.TokenService>();
-        var token = tokens.CreateAccessToken(session!.UserId.ToString(), session.SessionId.ToString(), roles: ["admin"]);
+        var token = tokens.CreateAccessToken(session!.UserId.ToString(), session.SessionId.ToString(), companyId: companyId.ToString());
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         return client;
     }
@@ -75,18 +102,37 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
         (await anonymous.PostAsJsonAsync($"{Prefix}/{Key}/preview", new { subject = "S", text = "t" })).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
-    [Fact(Skip = "The admin policy is off for now (see the TODO on MessageTemplatesAdminController): any logged-in user may use the endpoints. Remove the Skip when the policy is back.")]
-    public async Task EveryEndpoint_ForAUserWithoutTheAdminRole_Is403_AndWritesNothing()
+    private async Task AssertEveryEndpointIsForbiddenAsync(HttpClient client)
     {
-        var client = await _fixture.CreateAuthenticatedClientAsync();
-
         (await client.GetAsync($"{Prefix}/models")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await client.GetAsync(Prefix)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await client.GetAsync($"{Prefix}/{Key}/versions")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         var create = await client.PostAsJsonAsync($"{Prefix}/{Key}/versions", new { language = "en", subject = "S", text = "t" });
         create.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await client.PostAsync($"{Prefix}/versions/1/activate", null)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await client.PostAsJsonAsync($"{Prefix}/{Key}/preview", new { subject = "S", text = "t" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
         (await _fixture.QueryDbAsync(db => db.Set<NotificationTemplate>().CountAsync())).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task EveryEndpoint_ForASignedInUserWithNoCompany_Is403_AndWritesNothing()
+    {
+        await AssertEveryEndpointIsForbiddenAsync(await _fixture.CreateAuthenticatedClientAsync());
+    }
+
+    [Fact]
+    public async Task EveryEndpoint_ForAnAdministratorWhoIsNotAPortalAdmin_Is403_AndWritesNothing()
+    {
+        await AssertEveryEndpointIsForbiddenAsync(await CreateClientWithRoleAsync("Administrator"));
+    }
+
+    [Fact]
+    public async Task APortalAdmin_IsLetIn()
+    {
+        var client = await CreateAdminClientAsync();
+
+        (await client.GetAsync($"{Prefix}/models")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     // ---- models and keys ----

@@ -49,6 +49,7 @@ namespace api_server.core
 				.AddScoped<IUserSettingsService, UserSettingsService>()
 				.AddScoped<IUserEmergencyAlertService, UserEmergencyAlertService>()
 				.AddScoped<IUserCurrentContextService, UserCurrentContextService>()
+				.AddScoped<api_server.Controllers.Menu.Services.IMenuService, api_server.Controllers.Menu.Services.MenuService>()
 				.AddScoped<ITeamService, TeamService>()
 				.AddScoped<ITeamContextService, TeamContextService>()
 				.AddScoped<ITranslationService, TranslationService>()
