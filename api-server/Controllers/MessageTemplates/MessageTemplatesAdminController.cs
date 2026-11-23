@@ -1,28 +1,25 @@
-using System.Text.Json;
-using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using api_server.Controllers.Base;
 using api_server.Controllers.MessageTemplates.Dto;
-using api_server.core;
 using db_model.UserManagement;
 using exs.Database.Commons.Interfaces;
 using exs.notifications_service.Templates;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace api_server.Controllers.MessageTemplates
 {
 	/// <summary>
 	/// The developers' screen for notification templates: which messages exist and what their templates may use, the versions of
-	/// each template, adding a version, choosing the live one, and trying a draft out. For developers only: members of the
-	/// Portal Admin role (AuthPolicies.PortalAdmin) get in; anyone else who is signed in gets 403, and nobody signed out 401.
+	/// each template, adding a version, choosing the live one, and trying a draft out. For developers only, but access is not
+	/// restricted by role yet: any signed-in user can call these endpoints (nobody signed out, 401); the menu only hides the page.
 	///
 	/// A version is never edited: POST .../versions always adds a row (inactive), POST /versions/{id}/activate moves the live flag,
 	/// so earlier wording can always be switched back. Answers are camelCase JSON with every field present (null when empty),
 	/// whatever the host's general JSON settings are, because the portal reads them as a fixed contract.
 	/// </summary>
-	[Authorize(Policy = AuthPolicies.PortalAdmin)]
 	public class MessageTemplatesAdminController : AuthAPIController
 	{
 		private const string Prefix = "/api/admin/message-templates";

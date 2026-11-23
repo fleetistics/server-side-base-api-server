@@ -237,16 +237,6 @@ try
             };
         });
 
-    builder.Services.AddAuthorization(options =>
-    {
-        // Role policies are decided from the database per call — see core/AuthPolicies.cs and core/RoleAuthorization.cs.
-        options.AddPolicy(AuthPolicies.PortalAdmin, policy => policy
-            .RequireAuthenticatedUser()
-            .AddRequirements(new RoleRequirement(AuthPolicies.PortalAdminRole)));
-    });
-    builder.Services.AddScoped<IRoleLookup, RoleLookup>();
-    builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, RoleAuthorizationHandler>();
-
     // OpenTelemetry: traces + metrics. Logs stay with Serilog (its output templates
     // carry {TraceId} so log lines join to traces). The OTLP exporter is registered
     // only when an endpoint is configured — via the standard OTEL_EXPORTER_OTLP_ENDPOINT

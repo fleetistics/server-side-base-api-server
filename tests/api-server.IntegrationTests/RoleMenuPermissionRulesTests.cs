@@ -58,6 +58,110 @@ public sealed class RoleMenuPermissionRulesTests
         RoleMenuPermissionRules.Normalize([]).ShouldBeEmpty();
     }
 
+    // ---- Effective / HasCompanyRows ----
+
+    private static Role2MenuItem CompanyRow(int itemId, int? companyId, bool view = false) =>
+        new() { PermissionRoleId = 7, ApplicationMenuItemId = itemId, CompanyId = companyId, CanView = view };
+
+    [Fact]
+    public void Effective_WithoutRowsOfTheCompany_IsTheDefaults()
+    {
+        var rows = new[] { CompanyRow(1, null, true), CompanyRow(2, null, true), CompanyRow(1, 99, true) };
+
+        RoleMenuPermissionRules.Effective(rows, 5).Select(r => r.ApplicationMenuItemId).ShouldBe([1, 2]);
+    }
+
+    [Fact]
+    public void Effective_WithRowsOfTheCompany_IsThoseRowsOnly_NotMergedWithTheDefaults()
+    {
+        var rows = new[] { CompanyRow(1, null, true), CompanyRow(2, null, true), CompanyRow(3, 5, true), CompanyRow(1, 99, true) };
+
+        var result = RoleMenuPermissionRules.Effective(rows, 5);
+
+        result.Select(r => r.ApplicationMenuItemId).ShouldBe([3]);
+        result.ShouldAllBe(r => r.CompanyId == 5);
+    }
+
+    [Fact]
+    public void Effective_AnOverrideThatAllowsNothing_StillWins_AndIsNotTheDefaults()
+    {
+        var rows = new[] { CompanyRow(1, null, true), CompanyRow(1, 5, false), CompanyRow(2, 5, false) };
+
+        var result = RoleMenuPermissionRules.Effective(rows, 5);
+
+        result.Count.ShouldBe(2);
+        result.ShouldAllBe(r => r.CanView == false);
+    }
+
+    [Fact]
+    public void Effective_WithNoCompany_IsTheDefaultsOnly()
+    {
+        var rows = new[] { CompanyRow(1, null, true), CompanyRow(2, 5, true) };
+
+        RoleMenuPermissionRules.Effective(rows, null).Select(r => r.ApplicationMenuItemId).ShouldBe([1]);
+    }
+
+    [Fact]
+    public void Effective_WithNoRows_IsEmpty()
+    {
+        RoleMenuPermissionRules.Effective([], 5).ShouldBeEmpty();
+        RoleMenuPermissionRules.Effective([], null).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void HasCompanyRows_IsTrueOnlyForRowsOfThatCompany()
+    {
+        var rows = new[] { CompanyRow(1, null, true), CompanyRow(2, 99, true), CompanyRow(3, 5) };
+
+        RoleMenuPermissionRules.HasCompanyRows(rows, 5).ShouldBeTrue();
+        RoleMenuPermissionRules.HasCompanyRows(rows, 99).ShouldBeTrue();
+        RoleMenuPermissionRules.HasCompanyRows(rows, 6).ShouldBeFalse();
+        RoleMenuPermissionRules.HasCompanyRows([CompanyRow(1, null, true)], 5).ShouldBeFalse();
+        RoleMenuPermissionRules.HasCompanyRows([], 5).ShouldBeFalse();
+    }
+
+    // ---- FullSet ----
+
+    [Fact]
+    public void FullSet_HasEveryMenuItemInTheOrderGiven_WithAllFalseForWhatIsNotRequested()
+    {
+        var result = RoleMenuPermissionRules.FullSet([3, 1, 2], [Grant(2, view: true)]);
+
+        result.Select(g => g.ApplicationMenuItemId).ShouldBe([3, 1, 2]);
+        result.Where(g => g.CanView).Select(g => g.ApplicationMenuItemId).ShouldBe([2]);
+        var unlisted = result.Single(g => g.ApplicationMenuItemId == 3);
+        (unlisted.CanView, unlisted.CanCreate, unlisted.CanEdit, unlisted.CanDelete).ShouldBe((false, false, false, false));
+    }
+
+    [Fact]
+    public void FullSet_NormalizesTheRequest_TickedFlagsImplyView_AndAnEmptyEntryIsFalse()
+    {
+        var result = RoleMenuPermissionRules.FullSet([1, 2, 3], [Grant(1, edit: true), Grant(2)]);
+
+        var first = result.Single(g => g.ApplicationMenuItemId == 1);
+        (first.CanView, first.CanEdit).ShouldBe((true, true));
+        var second = result.Single(g => g.ApplicationMenuItemId == 2);
+        (second.CanView, second.CanCreate, second.CanEdit, second.CanDelete).ShouldBe((false, false, false, false));
+        result.Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public void FullSet_WithNothingRequested_IsEveryItemWithNothingAllowed()
+    {
+        var result = RoleMenuPermissionRules.FullSet([1, 2], []);
+
+        result.Count.ShouldBe(2);
+        result.ShouldAllBe(g => !g.CanView && !g.CanCreate && !g.CanEdit && !g.CanDelete);
+    }
+
+    [Fact]
+    public void FullSet_IgnoresARequestedItemThatIsNotInTheMenu()
+    {
+        var result = RoleMenuPermissionRules.FullSet([1], [Grant(1, view: true), Grant(9, view: true)]);
+
+        result.Select(g => g.ApplicationMenuItemId).ShouldBe([1]);
+    }
+
     // ---- BuildTree ----
 
     private static readonly ApplicationMenuItem[] Menu =

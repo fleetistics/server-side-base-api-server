@@ -12,8 +12,11 @@ namespace api_server.Controllers.Roles.Dto
 		/// <summary>True for a role every company can use; false for one that belongs to the caller's company.</summary>
 		public bool IsSystem { get; set; }
 
-		/// <summary>True when the role cannot be edited here: Portal Admin always has everything, so nobody can lock themselves out.</summary>
-		public bool IsReadOnly { get; set; }
+		/// <summary>
+		/// Company screen only: true when the company has access rights of its own for the role (an override of a system role, or
+		/// its own role), false when it uses the defaults. Always false on the portal-admin screen.
+		/// </summary>
+		public bool IsOverridden { get; set; }
 
 		/// <summary>Users who hold the role in the caller's company.</summary>
 		public int MemberCount { get; set; }
@@ -38,8 +41,11 @@ namespace api_server.Controllers.Roles.Dto
 
 		public string RoleName { get; set; } = default!;
 
-		/// <summary>See <see cref="RoleSummaryDto.IsReadOnly"/>: a PUT is refused.</summary>
-		public bool IsReadOnly { get; set; }
+		/// <summary>True for a role every company can use.</summary>
+		public bool IsSystem { get; set; }
+
+		/// <summary>See <see cref="RoleSummaryDto.IsOverridden"/>.</summary>
+		public bool IsOverridden { get; set; }
 
 		public List<RoleMenuItemPermissionDto> Items { get; set; } = [];
 	}
@@ -66,7 +72,7 @@ namespace api_server.Controllers.Roles.Dto
 		public List<RoleMenuItemPermissionDto> Children { get; set; } = [];
 	}
 
-	/// <summary>Body of PUT /api/admin/roles/{roleId}/menu-permissions: the role's flags, replacing what it had.</summary>
+	/// <summary>Body of PUT .../roles/{roleId}/menu-permissions: the role's flags, replacing what it had.</summary>
 	public class SetRoleMenuPermissionsDto
 	{
 		/// <summary>One entry per menu item the role may do anything with. An item that is left out is not allowed at all.</summary>

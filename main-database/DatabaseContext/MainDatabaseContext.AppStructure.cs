@@ -39,7 +39,18 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			modelBuilder.Entity<Role2MenuItem>(entity =>
 			{
 				entity.ToTable("role2menu_item");
-				entity.HasKey(e => new { e.PermissionRoleId, e.ApplicationMenuItemId });
+				entity.HasKey(e => new { e.Id });
+				entity.Property(e => e.Id).ValueGeneratedOnAdd();
+				// One row per role and item for the defaults (CompanyId null) and one per role, item and company otherwise. Two filtered
+				// indexes because a null in a unique index counts as different from another null.
+				entity.HasIndex(e => new { e.PermissionRoleId, e.ApplicationMenuItemId })
+					.IsUnique()
+					.HasFilter("\"CompanyId\" IS NULL")
+					.HasDatabaseName("UX_role2menu_item_default");
+				entity.HasIndex(e => new { e.PermissionRoleId, e.ApplicationMenuItemId, e.CompanyId })
+					.IsUnique()
+					.HasFilter("\"CompanyId\" IS NOT NULL")
+					.HasDatabaseName("UX_role2menu_item_company");
 			});
 		}
 	}

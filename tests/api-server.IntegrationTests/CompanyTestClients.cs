@@ -1,6 +1,5 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using api_server.core;
 using db_model.Companies;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace api_server.IntegrationTests;
 
 /// <summary>A client signed in as the seeded user, working in a company where they hold a given system-wide role.</summary>
-internal static class PortalAdminTestClients
+internal static class CompanyTestClients
 {
     /// <summary>
     /// Logs in as the seeded user, creates a company and gives them the system-wide role with this name in it (the role is created if
@@ -47,5 +46,5 @@ internal static class PortalAdminTestClients
         return (client, companyId);
     }
 
-    public static Task<(HttpClient Client, int CompanyId)> CreatePortalAdminAsync(ApiFixture fixture) => CreateAsync(fixture, AuthPolicies.PortalAdminRole);
+    public static Task<(HttpClient Client, int CompanyId)> CreateAdministratorAsync(ApiFixture fixture) => CreateAsync(fixture, "Administrator");
 }

@@ -154,8 +154,11 @@ namespace main_database.Migrations
 
             modelBuilder.Entity("db_model.AppStructure.Role2MenuItem", b =>
                 {
-                    b.Property<int>("PermissionRoleId")
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<int>("ApplicationMenuItemId")
                         .HasColumnType("integer");
@@ -172,13 +175,29 @@ namespace main_database.Migrations
                     b.Property<bool?>("CanView")
                         .HasColumnType("boolean");
 
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("now()");
 
-                    b.HasKey("PermissionRoleId", "ApplicationMenuItemId");
+                    b.Property<int>("PermissionRoleId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PermissionRoleId", "ApplicationMenuItemId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_role2menu_item_default")
+                        .HasFilter("\"CompanyId\" IS NULL");
+
+                    b.HasIndex("PermissionRoleId", "ApplicationMenuItemId", "CompanyId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_role2menu_item_company")
+                        .HasFilter("\"CompanyId\" IS NOT NULL");
 
                     b.ToTable("role2menu_item", (string)null);
                 });

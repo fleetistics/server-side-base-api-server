@@ -83,13 +83,15 @@ namespace api_server.Controllers.Roles.Services
 				{
 					var menuItemIds = await mRepository.GetQueryable<ApplicationMenuItem>(i => i.MenuId == MenuService.MainMenuId)
 						.AsNoTracking().Select(i => i.Id).ToListAsync(cancellationToken);
-					var rights = await mRepository.GetQueryable<Role2MenuItem>(g => g.PermissionRoleId == from && menuItemIds.Contains(g.ApplicationMenuItemId))
+					// What the source gives the company today (its override when it has one, else the defaults) becomes the new role's own rows.
+					var sourceRows = await mRepository.GetQueryable<Role2MenuItem>(g => g.PermissionRoleId == from && menuItemIds.Contains(g.ApplicationMenuItemId) && (g.CompanyId == null || g.CompanyId == companyId))
 						.AsNoTracking().ToListAsync(cancellationToken);
-					foreach (var right in rights)
+					foreach (var right in RoleMenuPermissionRules.Effective(sourceRows, companyId))
 					{
 						mRepository.Create(new Role2MenuItem
 						{
 							PermissionRoleId = role.Id,
+							CompanyId = companyId,
 							ApplicationMenuItemId = right.ApplicationMenuItemId,
 							CanView = right.CanView,
 							CanCreate = right.CanCreate,

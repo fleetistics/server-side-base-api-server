@@ -1,4 +1,5 @@
 using api_server.Controllers.Menu.Dto;
+using api_server.Controllers.Roles.Services;
 using db_model.AppStructure;
 using db_model.Companies;
 using exs.Database.Commons.Interfaces;
@@ -36,9 +37,11 @@ namespace api_server.Controllers.Menu.Services
 				.FirstOrDefaultAsync(cancellationToken);
 			if (roleId is not int role) return [];
 
-			var grants = await mRepository.GetQueryable<Role2MenuItem>(g => g.PermissionRoleId == role && g.CanView == true)
+			// The company's own rows for the role when it has any (its own role, or its override of a system role), otherwise the defaults.
+			var rows = await mRepository.GetQueryable<Role2MenuItem>(g => g.PermissionRoleId == role && (g.CompanyId == null || g.CompanyId == company))
 				.AsNoTracking()
 				.ToListAsync(cancellationToken);
+			var grants = RoleMenuPermissionRules.Effective(rows, company).Where(g => g.CanView == true).ToList();
 			if (grants.Count == 0) return [];
 
 			var items = await mRepository.GetQueryable<ApplicationMenuItem>(i => i.MenuId == MainMenuId)
