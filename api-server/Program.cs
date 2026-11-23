@@ -239,9 +239,13 @@ try
 
     builder.Services.AddAuthorization(options =>
     {
-        // Example role policy — see core/AuthPolicies.cs for usage.
-        options.AddPolicy(AuthPolicies.Admin, policy => policy.RequireRole(AuthPolicies.AdminRole));
+        // Role policies are decided from the database per call — see core/AuthPolicies.cs and core/RoleAuthorization.cs.
+        options.AddPolicy(AuthPolicies.PortalAdmin, policy => policy
+            .RequireAuthenticatedUser()
+            .AddRequirements(new RoleRequirement(AuthPolicies.PortalAdminRole)));
     });
+    builder.Services.AddScoped<IRoleLookup, RoleLookup>();
+    builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, RoleAuthorizationHandler>();
 
     // OpenTelemetry: traces + metrics. Logs stay with Serilog (its output templates
     // carry {TraceId} so log lines join to traces). The OTLP exporter is registered

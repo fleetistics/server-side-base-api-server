@@ -15,15 +15,14 @@ namespace api_server.Controllers.MessageTemplates
 {
 	/// <summary>
 	/// The developers' screen for notification templates: which messages exist and what their templates may use, the versions of
-	/// each template, adding a version, choosing the live one, and trying a draft out. Meant for developers only (see the TODO on the class).
+	/// each template, adding a version, choosing the live one, and trying a draft out. For developers only: members of the
+	/// Portal Admin role (AuthPolicies.PortalAdmin) get in; anyone else who is signed in gets 403, and nobody signed out 401.
 	///
 	/// A version is never edited: POST .../versions always adds a row (inactive), POST /versions/{id}/activate moves the live flag,
 	/// so earlier wording can always be switched back. Answers are camelCase JSON with every field present (null when empty),
 	/// whatever the host's general JSON settings are, because the portal reads them as a fixed contract.
 	/// </summary>
-	// TODO: restrict to developers. For now any logged-in user may use it (AuthAPIController requires a login), because no
-	// token carries a role yet, so AuthPolicies.Admin would refuse everyone. Put [Authorize(Policy = AuthPolicies.Admin)] back
-	// once roles are issued.
+	[Authorize(Policy = AuthPolicies.PortalAdmin)]
 	public class MessageTemplatesAdminController : AuthAPIController
 	{
 		private const string Prefix = "/api/admin/message-templates";
