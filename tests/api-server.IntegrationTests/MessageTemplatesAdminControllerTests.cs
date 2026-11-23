@@ -53,7 +53,7 @@ public sealed class MessageTemplatesAdminControllerTests : IAsyncLifetime
                 CompanyId = company.Id,
                 UserId = _fixture.TestUserId,
                 PermissionRoleId = role.Id,
-                StatusId = 2,
+                StatusId = 1,
                 JoinTypeId = 1,
                 JoinedDate = DateTime.UtcNow,
             });

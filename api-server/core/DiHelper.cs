@@ -50,6 +50,8 @@ namespace api_server.core
 				.AddScoped<IUserEmergencyAlertService, UserEmergencyAlertService>()
 				.AddScoped<IUserCurrentContextService, UserCurrentContextService>()
 				.AddScoped<api_server.Controllers.Menu.Services.IMenuService, api_server.Controllers.Menu.Services.MenuService>()
+				.AddScoped<api_server.Controllers.Roles.Services.IRoleMenuPermissionsService, api_server.Controllers.Roles.Services.RoleMenuPermissionsService>()
+				.AddScoped<api_server.Controllers.Roles.Services.IRoleAdminService, api_server.Controllers.Roles.Services.RoleAdminService>()
 				.AddScoped<ITeamService, TeamService>()
 				.AddScoped<ITeamContextService, TeamContextService>()
 				.AddScoped<ITranslationService, TranslationService>()
