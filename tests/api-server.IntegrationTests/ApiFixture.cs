@@ -82,6 +82,7 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
         // Every test logs in; the brute-force limiter must not throttle the suite.
         Environment.SetEnvironmentVariable("RateLimiting__Login__PermitLimit", "100000");
         Environment.SetEnvironmentVariable("RateLimiting__Refresh__PermitLimit", "100000");
+        Environment.SetEnvironmentVariable("RateLimiting__LocationRefresh__PermitLimit", "100000");
         // Same for the registration / password-reset limiters. Set as host settings (not env
         // vars) so a test can lower one through WithWebHostBuilder(UseSetting) — env vars would win.
         builder.UseSetting("RateLimiting:Register:PermitLimit", "100000");

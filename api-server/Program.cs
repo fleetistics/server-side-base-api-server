@@ -123,11 +123,6 @@ try
     // Login brute-force protection: fixed window per client IP. Sized via config so
     // tests/load environments can raise it (RateLimiting:Login:PermitLimit).
     var loginPermitLimit = builder.Configuration.GetValue("RateLimiting:Login:PermitLimit", 5);
-    // refresh/checkSession are [AllowAnonymous] and write to the DB on every call —
-    // unbounded like this they're an easy DB-write-amplification target even though the
-    // rotation key itself isn't guessable. Higher limit than login: legitimate traffic
-    // hits these far more often (every app start/expired token, not just sign-in).
-    var refreshPermitLimit = builder.Configuration.GetValue("RateLimiting:Refresh:PermitLimit", 30);
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -154,14 +149,35 @@ try
         AddPerIpPolicy("register", "RateLimiting:Register:PermitLimit", 5);
         AddPerIpPolicy("password-reset-request", "RateLimiting:PasswordResetRequest:PermitLimit", 5);
         AddPerIpPolicy("password-reset", "RateLimiting:PasswordReset:PermitLimit", 10);
-        options.AddPolicy("refresh", context => RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions
+        // The refresh endpoints are [AllowAnonymous] and write to the DB on every call, so unbounded they would be an
+        // easy DB-write-amplification target even though the rotation keys are not guessable. The limit is per IP,
+        // and many legitimate phones can share one (a fleet depot's Wi-Fi, carrier NAT) and refresh together at shift
+        // start. So this is a coarse flood guard, not a per-user quota: a token bucket that absorbs such a burst
+        // (PermitLimit tokens) and then allows a steady ReplenishPerMinute. Per-session misuse is caught by the
+        // rotation replay detection, not here.
+        //   "refresh"          - the app/portal session chain: refresh, check-session, check-app-session.
+        //   "location-refresh" - the background location chain, in a bucket of its own so a tracker stuck retrying
+        //                        cannot use up the app's budget (or the other way round).
+        void AddPerIpTokenBucketPolicy(string policyName, string configSection, int defaultPermitLimit, int defaultReplenishPerMinute) =>
+            options.AddPolicy(policyName, context =>
             {
-                PermitLimit = refreshPermitLimit,
-                Window = TimeSpan.FromMinutes(1),
-                QueueLimit = 0,
-            }));
+                var section = context.RequestServices.GetRequiredService<IConfiguration>().GetSection(configSection);
+                var permitLimit = Math.Max(1, section.GetValue("PermitLimit", defaultPermitLimit));
+                var replenishPerMinute = Math.Max(1, section.GetValue("ReplenishPerMinute", defaultReplenishPerMinute));
+                return RateLimitPartition.GetTokenBucketLimiter(
+                    context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new TokenBucketRateLimiterOptions
+                    {
+                        TokenLimit = permitLimit,
+                        // Refilled every 10 s rather than once a minute, so a drained bucket recovers smoothly.
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(10),
+                        TokensPerPeriod = Math.Max(1, (int)Math.Ceiling(replenishPerMinute / 6.0)),
+                        AutoReplenishment = true,
+                        QueueLimit = 0,
+                    });
+            });
+        AddPerIpTokenBucketPolicy("refresh", "RateLimiting:Refresh", defaultPermitLimit: 200, defaultReplenishPerMinute: 100);
+        AddPerIpTokenBucketPolicy("location-refresh", "RateLimiting:LocationRefresh", defaultPermitLimit: 200, defaultReplenishPerMinute: 100);
     });
 
     // Unversioned calls map to v1, so current SPA routes keep working; future
@@ -203,39 +219,45 @@ try
         throw new InvalidOperationException("Missing required 'Jwt:SigningKey' configuration value.");
     }
 
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
-        {
-            options.MapInboundClaims = false;
-            options.TokenValidationParameters = new TokenValidationParameters
-            {
-                ValidateIssuer = true,
-                ValidIssuer = jwtOptions.Issuer,
-                ValidateAudience = true,
-                ValidAudience = jwtOptions.Audience,
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.FromSeconds(30),
-            };
+    // Two bearer schemes, identical except for the audience they accept: the default one takes the API access
+    // tokens, LocationReport takes only the location-report tokens (TokenService.AccessTokenKind). A token is
+    // therefore refused by every endpoint that is not of its kind; see AuthSchemes.
+    builder.Services.AddAuthentication(AuthSchemes.Api)
+        .AddJwtBearer(AuthSchemes.Api, options => ConfigureAccessTokenBearer(options, jwtOptions.Audience))
+        .AddJwtBearer(AuthSchemes.LocationReport, options => ConfigureAccessTokenBearer(options, jwtOptions.LocationReportAudience));
 
-            // The access token lives in SPA memory and is sent as a normal
-            // "Authorization: Bearer <token>" header — the default JwtBearer
-            // token retrieval already handles that, so no cookie lookup here.
-            options.Events = new JwtBearerEvents
+    void ConfigureAccessTokenBearer(JwtBearerOptions options, string audience)
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidateAudience = true,
+            ValidAudience = audience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+
+        // The access token lives in SPA memory and is sent as a normal
+        // "Authorization: Bearer <token>" header — the default JwtBearer
+        // token retrieval already handles that, so no cookie lookup here.
+        options.Events = new JwtBearerEvents
+        {
+            // Only tokens issued as access tokens (token_use=access) are accepted; anything
+            // else signed with this key is refused here (e.g. mixup).
+            OnTokenValidated = context =>
             {
-                // Only tokens issued as access tokens (token_use=access) are accepted; anything
-                // else signed with this key is refused here (e.g. mixup).
-                OnTokenValidated = context =>
+                if (context.Principal?.FindFirst("token_use")?.Value != "access")
                 {
-                    if (context.Principal?.FindFirst("token_use")?.Value != "access")
-                    {
-                        context.Fail("Token is not an access token.");
-                    }
-                    return Task.CompletedTask;
-                },
-            };
-        });
+                    context.Fail("Token is not an access token.");
+                }
+                return Task.CompletedTask;
+            },
+        };
+    }
 
     // OpenTelemetry: traces + metrics. Logs stay with Serilog (its output templates
     // carry {TraceId} so log lines join to traces). The OTLP exporter is registered

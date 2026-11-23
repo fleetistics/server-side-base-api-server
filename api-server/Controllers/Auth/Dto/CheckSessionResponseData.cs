@@ -10,6 +10,7 @@ namespace api_server.Auth.Dto
         public string AccessToken { get; set; } = string.Empty;
 
         public UserSessionInfoDto UserSessionInfo { get; set; }
-        
+        public RefreshAppLocationTokenResponseData? AppLocationTokenInfo { get; set; }
+
     }
 }

@@ -1,4 +1,5 @@
 using api_server.Auth.Dto;
+using api_server.Controllers.Auth.Dto;
 using api_server.core;
 using db_model.Gps;
 using db_model.UserManagement;
@@ -28,7 +29,7 @@ namespace api_server.Auth
     /// value), the access token and the user id. <c>CookieExpiresUtc</c> is null for a session cookie.
     /// The key fields and the access token are secrets, so ToString is overridden to leave them out.
     /// </summary>
-    public sealed record SessionCheckResult(string SessionKey, int RotationCounter, string SessionSign, string CompositeCookieKey, DateTime? CookieExpiresUtc, int UserId, int? CompanyId, string AccessToken)
+    public sealed record SessionCheckResult(string SessionKey, int RotationCounter, string SessionSign, string CompositeCookieKey, DateTime? CookieExpiresUtc, int UserId, int? CompanyId, string AccessToken, RefreshAppLocationTokenResponseData? AppLocationTokenInfo = null)
     {
         public override string ToString() => $"{nameof(SessionCheckResult)} {{ UserId = {UserId}, CompanyId = {CompanyId} }}";
     }
@@ -73,20 +74,39 @@ namespace api_server.Auth
         LoginThrottle loginThrottle,
         ILogger<AuthService> logger)
     {
-        private SessionCheckResult generateSessionCheckResult(UserSession session)
+        // Null when the session has no location chain to hand out: it is not bound to a mobile GPS device (the
+        // location report needs one, see LocationAuthAPIController), or its location counter was never started.
+        // Handing out a key for a counter the row does not hold would make its first use look like a replay.
+        private RefreshAppLocationTokenResponseData? generateAppLocationTokenResponseData(UserSession session)
         {
-            var key = tokenService.CreateRotationKey(session.SessionKey, session.Token.RotationCounter, session.Token.KeySalt);
-            return new SessionCheckResult(
+            if (session.MobileGpsDeviceId is not int mobileGpsDeviceId || session.Token.LocationReportTokenRotationCounter is not int locationCounter)
+            {
+                return null;
+            }
+            var LocationReportKey = tokenService.CreateRotationKey(session.SessionKey, locationCounter, session.Token.KeySalt, RotationKeyPurpose.LocationReport);
+            return new RefreshAppLocationTokenResponseData
+            {
+                access_token = tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), mobileGpsDeviceId.ToString(), kind: AccessTokenKind.LocationReport),
+                refresh_token = LocationReportKey.CompositeCookieKey,
+                expires_in = tokenService.GetAccesstokenExpirationInSeconds()
+            };
+        }
+        private SessionCheckResult generateSessionCheckResult(UserSession session, bool generateLocationReportToken=false)
+        {
+            var key = tokenService.CreateRotationKey(session.SessionKey, session.Token.RotationCounter, session.Token.KeySalt, RotationKeyPurpose.Session);
+                return new SessionCheckResult(
                 session.SessionKey,
                 session.Token.RotationCounter,
                 key.SessionSign,
                 key.CompositeCookieKey,
+
                 session.Token.IsPersistent ? session.Token.ExpirationTime : null,
                 session.UserId,
                 session.CompanyId,
-                tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), session.MobileGpsDeviceId?.ToString(), companyId: session.CompanyId?.ToString())
-
-            );
+                // The device claim stays on the API token too: API endpoints such as the emergency alert read it.
+                tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), session.MobileGpsDeviceId?.ToString(), companyId: session.CompanyId?.ToString()),
+                generateLocationReportToken?generateAppLocationTokenResponseData(session):null
+                );
         }
 
 
@@ -174,6 +194,7 @@ namespace api_server.Auth
             
 
             var now = DateTime.UtcNow;
+            var isPersistent = autoLoginMode ? true : rememberMe;
             var session = new UserSession
             {
                 UserId = user.Id,
@@ -186,9 +207,9 @@ namespace api_server.Auth
                 {
                     KeySalt = TokenService.GenerateKey(),
                     RotationCounter = 0,
-                    IsPersistent = autoLoginMode? autoLoginMode:rememberMe,
+                    IsPersistent = isPersistent,
                     CreationTime = now,
-                    ExpirationTime = rememberMe
+                    ExpirationTime = isPersistent
                         ? now.AddDays(tokenService.RefreshTokenDays)
                         : now + tokenService.SessionOnlyIdleLifetime,
                     LatestRefreshTime = now,
@@ -277,7 +298,7 @@ namespace api_server.Auth
         {
             if (TokenService.TryParseRotationKey(cookieKey) is RotationKey rotationKey)
             {
-                return await RefreshTokenAsync(rotationKey.SessionKey, rotationKey.RotationCounter, rotationKey.SessionSign, clientSideInfo, clientIp, cancellationToken);
+                return await RefreshTokenAsync(rotationKey.SessionKey, rotationKey.RotationCounter, rotationKey.SessionSign, false, clientSideInfo, clientIp, cancellationToken);
             }
             else return null;
         }
@@ -289,13 +310,13 @@ namespace api_server.Auth
         /// </summary>
         /// <param name="clientSideInfo">Null for a plain refresh: the stored client info is left as it is.</param>
         /// <param name="clientIp">Added to the stored PlatformDetails JSON together with clientSideInfo; ignored when that is null.</param>
-        public async Task<SessionCheckResult?> RefreshTokenAsync(string sessionKey, int rotationCounter, string sessionSign, ClientSideInfo? clientSideInfo, string? clientIp, CancellationToken cancellationToken)
+        public async Task<SessionCheckResult?> RefreshTokenAsync(string sessionKey, int rotationCounter, string sessionSign, bool doRefreshLocationReportToken, ClientSideInfo? clientSideInfo, string? clientIp, CancellationToken cancellationToken)
         {
             using var activity = Telemetry.Source.StartActivity("auth.refresh_session");
 
             // Auto-device sessions have no session key or salt, so no refresh key can ever match one.
             var session = await repository.GetQueryable<UserSession>(s => s.SessionKey == sessionKey && s.StatusId == UserSessionStatus.Active).FirstOrDefaultAsync(cancellationToken);
-            if (session is null  || !tokenService.IsValidRotationMac(session.SessionKey, rotationCounter, session.Token.KeySalt, sessionSign))
+            if (session is null  || !tokenService.IsValidRotationMac(session.SessionKey, rotationCounter, session.Token.KeySalt, sessionSign, RotationKeyPurpose.Session))
             {
                 activity?.SetStatus(ActivityStatusCode.Error, "rotation key not valid");
                 // The session key is a secret: neither it nor the presented key is logged.
@@ -309,56 +330,77 @@ namespace api_server.Auth
             {
                 activity?.SetStatus(ActivityStatusCode.Error, "session expired");
                 logger.LogWarning("Session rotation rejected: session {SessionId} expired at {ExpirationTimeUtc}", session.Id, session.Token.ExpirationTime);
-                session.StatusId = UserSessionStatus.Expired;
-                await repository.SaveAsync(cancellationToken);
+                await markSessionExpiredAsync(session, cancellationToken);
                 return null;
             }
 
             if (session.Token.RotationCounter == rotationCounter)
             {
-                if (clientSideInfo is not null)
-                {
-                    session.ClientInfo.AppVersion = clientSideInfo.AppVersion;
-                    session.ClientInfo.AppHash = clientSideInfo.AppHash;
-                    session.ClientInfo.PlatformDetails = PlatformDetailsJson.WithClientIp(clientSideInfo.PlatformDetails, clientIp);
-                    // The DTO field is optional (the portal has no FCM), the column is NOT NULL: keep the stored value when none is sent.
-                    if (clientSideInfo.FCM_FID is not null)
-                        session.ClientInfo.FCM_FID = clientSideInfo.FCM_FID;
-                }
-
                 // Rotate: the previous counter's key still works for the reuse-grace window, then it's dead for good.
-                session.Token.RotationCounter++;
-                session.Token.LatestRefreshTime = now;
-
-
+                //
+                // One conditional UPDATE (compare-and-swap on this chain's counter) instead of a tracked save: it
+                // touches only this chain's columns and bypasses the LatestUpdate concurrency token, so a location
+                // rotation saved in the same instant no longer makes this one fail. Two rotations of the SAME chain
+                // still exclude each other: only one of them finds the counter at the presented value.
+                var startLocationChain = doRefreshLocationReportToken && session.MobileGpsDeviceId is not null;
                 // Idle sessions live on while they are used; persistent ones keep their fixed expiry.
+                DateTime? slidingExpiration = null;
                 if (!session.Token.IsPersistent)
                 {
                     var idleEnd = now + tokenService.SessionOnlyIdleLifetime;
                     var maxEnd = session.Token.CreationTime + tokenService.SessionOnlyMaxLifetime;
-                    session.Token.ExpirationTime = idleEnd < maxEnd ? idleEnd : maxEnd;
+                    slidingExpiration = idleEnd < maxEnd ? idleEnd : maxEnd;
                 }
+                var platformDetails = clientSideInfo is null ? null : PlatformDetailsJson.WithClientIp(clientSideInfo.PlatformDetails, clientIp);
 
-                
-                try
-                {
-                    await repository.SaveAsync(cancellationToken);
-                    return generateSessionCheckResult(session);
-                }
-                catch (DbUpdateConcurrencyException)
-                {
-                    // LatestUpdate (stamped by a DB trigger) changed under us: another request saved this session first.
-                    logger.LogInformation("Session {SessionId} rotation lost a race with a concurrent update; reloading", session.Id);
-                    await repository.DbContext.Entry(session).ReloadAsync(cancellationToken);
-                    if (session.StatusId != UserSessionStatus.Active || session.Token.RotationCounter == rotationCounter)
+                var rotated = await repository
+                    .GetQueryable<UserSession>(s => s.Id == session.Id && s.StatusId == UserSessionStatus.Active && s.Token.RotationCounter == rotationCounter)
+                    .ExecuteUpdateAsync(setters =>
                     {
-                        // Ended meanwhile, or reloaded and still unrotated (something else touched the row, nothing
-                        // rotated it). Not a verdict on the key: the client simply tries again.
-                        return null;
-                    }
-                    // The winner rotated with this same key: hand back its current state.
-                    return generateSessionCheckResult(session);
+                        setters
+                            .SetProperty(s => s.Token.RotationCounter, rotationCounter + 1)
+                            .SetProperty(s => s.Token.LatestRefreshTime, now);
+                        if (slidingExpiration is DateTime expiration)
+                        {
+                            setters.SetProperty(s => s.Token.ExpirationTime, expiration);
+                        }
+                        if (startLocationChain)
+                        {
+                            // Computed in SQL from the row's current value: a location refresh may have moved it since we read it.
+                            setters
+                                .SetProperty(s => s.Token.LocationReportTokenRotationCounter,
+                                    s => s.Token.LocationReportTokenRotationCounter == null || s.Token.LocationReportTokenRotationCounter < 1
+                                        ? 1
+                                        : s.Token.LocationReportTokenRotationCounter + 1)
+                                .SetProperty(s => s.Token.LocationReportTokenLatestRefreshTime, now);
+                        }
+                        if (clientSideInfo is not null)
+                        {
+                            setters
+                                .SetProperty(s => s.ClientInfo.AppVersion, clientSideInfo.AppVersion)
+                                .SetProperty(s => s.ClientInfo.AppHash, clientSideInfo.AppHash)
+                                .SetProperty(s => s.ClientInfo.PlatformDetails, platformDetails);
+                            // The DTO field is optional (the portal has no FCM), the column is NOT NULL: keep the stored value when none is sent.
+                            if (clientSideInfo.FCM_FID is not null)
+                            {
+                                setters.SetProperty(s => s.ClientInfo.FCM_FID, clientSideInfo.FCM_FID);
+                            }
+                        }
+                    }, cancellationToken) == 1;
+
+                // The UPDATE bypassed the change tracker: read back what the row holds now, ours or the winner's.
+                await repository.DbContext.Entry(session).ReloadAsync(cancellationToken);
+                if (rotated)
+                {
+                    return generateSessionCheckResult(session, doRefreshLocationReportToken);
                 }
+                if (session.StatusId != UserSessionStatus.Active)
+                {
+                    return null;
+                }
+                // Another request rotated this chain first: decide below on the fresh values, exactly as for a key
+                // that arrived late (inside the grace window it gets the winner's state, otherwise it is a replay).
+                logger.LogInformation("Session {SessionId} rotation lost a race with a concurrent rotation", session.Id);
             }
 
             // The key we JUST superseded, inside the reuse-grace window: almost certainly a harmless race
@@ -368,22 +410,91 @@ namespace api_server.Auth
                 && session.Token.ExpirationTime > now)
             {
                 activity?.SetTag("app.session.reuse_grace_window_hit", true);
-                return generateSessionCheckResult(session);
+                return generateSessionCheckResult(session, doRefreshLocationReportToken);
             }
 
             Telemetry.SessionKeyReuseRevocations.Add(1);
             activity?.SetStatus(ActivityStatusCode.Error, "refresh key reused");
             logger.LogWarning("Session {SessionId} of user {UserId} revoked: refresh key with counter {PresentedCounter} replayed (current counter {CurrentCounter})",
                 session.Id, session.UserId, rotationCounter, session.Token.RotationCounter);
-            try
+            if (!await endSessionAsync(session, UserSessionStatus.RevokedKeyReuse, cancellationToken))
             {
-                await endSessionAsync(session, UserSessionStatus.RevokedKeyReuse, cancellationToken);
+                // Ended by someone else in the same instant (a logout, most likely); the caller is refused regardless.
+                logger.LogInformation("Session {SessionId} had already ended when the revocation ran", session.Id);
             }
-            catch (DbUpdateConcurrencyException)
+            return null;
+        }
+        public async Task<RefreshAppLocationTokenResponseData?> RefreshAppLocationTokenAsync(string? refresh_token, string? clientIp, CancellationToken cancellationToken)
+        {
+            if (TokenService.TryParseRotationKey(refresh_token) is RotationKey refreshKey)
             {
-                // Someone else changed the session in the same instant (a logout, most likely); it is
-                // ending either way, and the caller is refused regardless.
-                logger.LogInformation("Revocation of session {SessionId} raced with another update", session.Id);
+                using var activity = Telemetry.Source.StartActivity("auth.refresh_appLocation_token");
+
+                // Auto-device sessions have no session key or salt, so no refresh key can ever match one.
+                var session = await repository.GetQueryable<UserSession>(s => s.SessionKey == refreshKey.SessionKey && s.StatusId == UserSessionStatus.Active).FirstOrDefaultAsync(cancellationToken);
+                if (session is null || !tokenService.IsValidRotationMac(session.SessionKey, refreshKey.RotationCounter, session.Token.KeySalt, refreshKey.SessionSign, RotationKeyPurpose.LocationReport))
+                {
+                    activity?.SetStatus(ActivityStatusCode.Error, "rotation key not valid");
+                    // The session key is a secret: neither it nor the presented key is logged.
+                    logger.LogWarning("Session rotation rejected: refresh key is not valid{Detail}", session is null ? " (unknown session)" : string.Empty);
+                    return null;
+                }
+                activity?.SetTag("app.session.id", session.Id);
+
+                var now = DateTime.UtcNow;
+                if (session.Token.ExpirationTime <= now)
+                {
+                    activity?.SetStatus(ActivityStatusCode.Error, "session expired");
+                    logger.LogWarning("Session rotation rejected: session {SessionId} expired at {ExpirationTimeUtc}", session.Id, session.Token.ExpirationTime);
+                    await markSessionExpiredAsync(session, cancellationToken);
+                    return null;
+                }
+
+                if (session.Token.LocationReportTokenRotationCounter == refreshKey.RotationCounter)
+                {
+                    // Conditional UPDATE on this chain's counter only, as in RefreshTokenAsync: an API rotation saved in
+                    // the same instant does not make it fail, a concurrent location rotation with the same key does.
+                    var rotated = await repository
+                        .GetQueryable<UserSession>(s => s.Id == session.Id && s.StatusId == UserSessionStatus.Active
+                            && s.Token.LocationReportTokenRotationCounter == refreshKey.RotationCounter)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(s => s.Token.LocationReportTokenRotationCounter, refreshKey.RotationCounter + 1)
+                            .SetProperty(s => s.Token.LocationReportTokenLatestRefreshTime, now),
+                            cancellationToken) == 1;
+
+                    // The UPDATE bypassed the change tracker: read back what the row holds now, ours or the winner's.
+                    await repository.DbContext.Entry(session).ReloadAsync(cancellationToken);
+                    if (rotated)
+                    {
+                        return generateAppLocationTokenResponseData(session);
+                    }
+                    if (session.StatusId != UserSessionStatus.Active)
+                    {
+                        return null;
+                    }
+                    // Another request rotated this chain first: decide below on the fresh values (grace window or replay).
+                    logger.LogInformation("Session {SessionId} location rotation lost a race with a concurrent rotation", session.Id);
+                }
+
+                // The key we JUST superseded, inside the reuse-grace window: almost certainly a harmless race
+                // (two tabs, an app relaunch, a retried request). Hand back the current state without rotating.
+                if (refreshKey.RotationCounter == session.Token.LocationReportTokenRotationCounter - 1
+                    && session.Token.LocationReportTokenLatestRefreshTime >= now - tokenService.RefreshReuseGraceWindow
+                    && session.Token.ExpirationTime > now)
+                {
+                    activity?.SetTag("app.session.reuse_grace_window_hit", true);
+                    return generateAppLocationTokenResponseData(session);
+                }
+
+                Telemetry.SessionKeyReuseRevocations.Add(1);
+                activity?.SetStatus(ActivityStatusCode.Error, "refresh key reused");
+                logger.LogWarning("Session {SessionId} of user {UserId} revoked: location refresh key with counter {PresentedCounter} replayed (current counter {CurrentCounter})",
+                    session.Id, session.UserId, refreshKey.RotationCounter, session.Token.LocationReportTokenRotationCounter);
+                if (!await endSessionAsync(session, UserSessionStatus.RevokedKeyReuse, cancellationToken))
+                {
+                    // Ended by someone else in the same instant (a logout, most likely); the caller is refused regardless.
+                    logger.LogInformation("Session {SessionId} had already ended when the revocation ran", session.Id);
+                }
             }
             return null;
         }
@@ -417,8 +528,10 @@ namespace api_server.Auth
             var session = await repository.GetQueryable<UserSession>(s => s.SessionKey == sessionKey && s.StatusId == UserSessionStatus.Active).FirstOrDefaultAsync(cancellationToken);
             if (session is not null)
             {
-                await endSessionAsync(session, UserSessionStatus.LoggedOutByUser, cancellationToken);
-                logger.LogInformation("Session {SessionId} logged out", session.Id);
+                if (await endSessionAsync(session, UserSessionStatus.LoggedOutByUser, cancellationToken))
+                {
+                    logger.LogInformation("Session {SessionId} logged out", session.Id);
+                }
             }
         }
         public async Task LogoutCookieAsync(string cookieKey, CancellationToken cancellationToken)
@@ -429,22 +542,44 @@ namespace api_server.Auth
             }
             
         }
-        // Closes the session with the given status; a phone that no other active session uses is marked logged out.
-        private async Task endSessionAsync(UserSession session, short statusId, CancellationToken cancellationToken)
+        /// <summary>
+        /// Marks a session whose refresh lifetime is over as Expired (only if it is still Active). A conditional UPDATE
+        /// for the same reason as in <see cref="endSessionAsync"/>: a tracked save could fail on the LatestUpdate token
+        /// when the other refresh chain rotates in the same instant, and that exception is not caught anywhere (500).
+        /// The phone is left as it is, as before.
+        /// </summary>
+        private Task markSessionExpiredAsync(UserSession session, CancellationToken cancellationToken) =>
+            repository
+                .GetQueryable<UserSession>(s => s.Id == session.Id && s.StatusId == UserSessionStatus.Active)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.StatusId, UserSessionStatus.Expired), cancellationToken);
+
+        /// <summary>
+        /// Closes the session with the given status; a phone that no other active session uses is marked logged out.
+        /// False when the session was no longer Active (someone else ended it first).
+        /// </summary>
+        /// <remarks>
+        /// Conditional UPDATEs rather than a tracked save: a tracked save checks the LatestUpdate concurrency token,
+        /// and the other refresh chain's rotation (also a direct UPDATE, which the trigger stamps) could make it fail.
+        /// That used to silently skip a replay revocation, or turn a logout into a 500 with the session left active.
+        /// The tracked <paramref name="session"/> is left untouched, so no later save writes it back.
+        /// </remarks>
+        private async Task<bool> endSessionAsync(UserSession session, short statusId, CancellationToken cancellationToken)
         {
-            session.StatusId = statusId;
-            if (session.MobileGpsDeviceId is not null)
+            var ended = await repository
+                .GetQueryable<UserSession>(s => s.Id == session.Id && s.StatusId == UserSessionStatus.Active)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(s => s.StatusId, statusId), cancellationToken) == 1;
+
+            if (ended && session.MobileGpsDeviceId is int deviceId)
             {
-                if (!(await repository.GetQueryable<UserSession>(s => s.Id != session.Id && s.MobileGpsDeviceId == session.MobileGpsDeviceId && s.StatusId == UserSessionStatus.Active).AnyAsync(cancellationToken)))
-                {
-                    var gpsDevice = await repository.GetQueryable<GpsDevice>(g => g.Id == session.MobileGpsDeviceId.Value && g.StatusId == GpsDeviceStatus.Active).FirstOrDefaultAsync(cancellationToken);
-                    if (gpsDevice != null)
-                    {
-                        gpsDevice.StatusId = GpsDeviceStatus.MobileLogOutInactive;
-                    }
-                }
+                // One statement: the "no other active session uses this phone" check and the update cannot be split
+                // by a login on the same phone in between.
+                var sessions = repository.DbContext.Set<UserSession>();
+                await repository.DbContext.Set<GpsDevice>()
+                    .Where(g => g.Id == deviceId && g.StatusId == GpsDeviceStatus.Active
+                        && !sessions.Any(s => s.MobileGpsDeviceId == deviceId && s.StatusId == UserSessionStatus.Active))
+                    .ExecuteUpdateAsync(setters => setters.SetProperty(g => g.StatusId, GpsDeviceStatus.MobileLogOutInactive), cancellationToken);
             }
-            await repository.SaveAsync(cancellationToken);
+            return ended;
         }
 
         /// <summary>

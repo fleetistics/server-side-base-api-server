@@ -1,99 +1,27 @@
 ﻿using Microsoft.EntityFrameworkCore.Migrations;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
 namespace main_database.Migrations
 {
-    /// <inheritdoc />
+    /// <summary>
+    /// Intentionally empty. As generated (on a branch whose model predated the user_session refresh-key changes) it
+    /// renamed SessionKey / ClientInfo_PlatformDetails / ClientInfo_AppHash back to ClientInfo_DeviceUID /
+    /// ClientInfo_CodeVersion / ClientInfo_AppUID and widened client_application.Id to integer, and the next migration
+    /// (20261118150918) renamed them forward again. The pair cancels out, so both are no-ops: a fresh database goes
+    /// straight to the current model, and an existing one is not touched. The shared dev database had already run
+    /// this migration and was repaired by hand (main-database/custom-sql/one-time-dev-db-repair-20261123.sql).
+    /// </summary>
     public partial class _20261118170351 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_user_session_SessionKey",
-                table: "user_session");
-
-            migrationBuilder.RenameColumn(
-                name: "SessionKey",
-                table: "user_session",
-                newName: "ClientInfo_DeviceUID");
-
-            migrationBuilder.RenameColumn(
-                name: "ClientInfo_PlatformDetails",
-                table: "user_session",
-                newName: "ClientInfo_CodeVersion");
-
-            migrationBuilder.RenameColumn(
-                name: "ClientInfo_AppHash",
-                table: "user_session",
-                newName: "ClientInfo_AppUID");
-
-            migrationBuilder.AlterColumn<int>(
-                name: "Id",
-                table: "client_application",
-                type: "integer",
-                nullable: false,
-                oldClrType: typeof(short),
-                oldType: "smallint")
-                .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn)
-                .OldAnnotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.RenameColumn(
-                name: "ClientInfo_DeviceUID",
-                table: "user_session",
-                newName: "SessionKey");
-
-            migrationBuilder.RenameColumn(
-                name: "ClientInfo_CodeVersion",
-                table: "user_session",
-                newName: "ClientInfo_PlatformDetails");
-
-            migrationBuilder.RenameColumn(
-                name: "ClientInfo_AppUID",
-                table: "user_session",
-                newName: "ClientInfo_AppHash");
-
-            migrationBuilder.AddColumn<short>(
-                name: "ClientInfo_ClientApplicationId",
-                table: "user_session",
-                type: "smallint",
-                nullable: false,
-                defaultValue: (short)0);
-
-            migrationBuilder.AddColumn<int>(
-                name: "CompanyId",
-                table: "user_session",
-                type: "integer",
-                nullable: true);
-
-            migrationBuilder.AlterColumn<short>(
-                name: "Id",
-                table: "client_application",
-                type: "smallint",
-                nullable: false,
-                oldClrType: typeof(int),
-                oldType: "integer")
-                .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn)
-                .OldAnnotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn);
-
-            migrationBuilder.AddColumn<string>(
-                name: "Uid",
-                table: "client_application",
-                type: "text",
-                nullable: false,
-                defaultValue: "");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_user_session_SessionKey",
-                table: "user_session",
-                column: "SessionKey",
-                unique: true);
         }
     }
 }

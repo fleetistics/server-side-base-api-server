@@ -135,7 +135,7 @@ namespace api_server.Controllers.Auth
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> CheckSession([FromBody] CheckSessionRequestData requestData, CancellationToken cancellationToken)
         {
-            var result = await authService.RefreshTokenAsync(requestData.SessionKey??"", requestData.RotationCounter??0, requestData.SessionSign??"", requestData.ClientSideInfo, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            var result = await authService.RefreshTokenAsync(requestData.SessionKey??"", requestData.RotationCounter??0, requestData.SessionSign??"", false, requestData.ClientSideInfo, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
             if (result != null)
             {
                 return Ok(new CheckSessionResponseData
@@ -149,6 +149,55 @@ namespace api_server.Controllers.Auth
                         CompanyId = result.CompanyId
                     }
                 });
+            }
+            else
+            {
+                return Unauthorized();
+            }
+
+        }
+        [HttpPost("/api/auth/check-app-session")]
+        [AllowAnonymous]
+        [EnableRateLimiting("refresh")] // unauthenticated + writes to the DB every call
+        [ProducesResponseType(typeof(CheckSessionResponseData), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> CheckAppSession([FromBody] CheckSessionRequestData requestData, CancellationToken cancellationToken)
+        {
+            var result = await authService.RefreshTokenAsync(requestData.SessionKey ?? "", requestData.RotationCounter ?? 0, requestData.SessionSign ?? "", true, requestData.ClientSideInfo, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            if (result != null)
+            {
+                return Ok(new CheckSessionResponseData
+                {
+                    AccessToken = result.AccessToken,
+                    RotationCounter = result.RotationCounter,
+                    SessionSign = result.SessionSign,
+                    UserSessionInfo = new UserSessionInfoDto
+                    {
+                        UserId = result.UserId,
+                        CompanyId = result.CompanyId
+                    },
+                    AppLocationTokenInfo = result.AppLocationTokenInfo
+                });
+            }
+            else
+            {
+                return Unauthorized();
+            }
+
+        }
+        [HttpPost("/api/auth/refresh-app-location-token")]
+        [AllowAnonymous]
+        [EnableRateLimiting("location-refresh")] // own bucket: background refreshes must not use up the app's "refresh" budget
+        [ProducesResponseType(typeof(RefreshAppLocationTokenResponseData), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        // Nullable on purpose: a missing refresh_token is just an invalid key (401 like every other refused key),
+        // not a validation error ([ApiController] would answer a non-nullable one with a 400).
+        public async Task<IActionResult> RefreshAppLocationToken([FromForm] string? refresh_token, CancellationToken cancellationToken)
+        {
+            var result = await authService.RefreshAppLocationTokenAsync(refresh_token, HttpContext.Connection.RemoteIpAddress?.ToString(), cancellationToken);
+            if (result != null)
+            {
+                return Ok(result);
             }
             else
             {
@@ -187,7 +236,7 @@ namespace api_server.Controllers.Auth
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         public async Task<IActionResult> RefreshSession([FromBody] RefreshKeyRequestData requestData, CancellationToken cancellationToken)
         {
-            var result = await authService.RefreshTokenAsync(requestData.SessionKey, requestData.RotationCounter, requestData.SessionSign, null, null, cancellationToken);
+            var result = await authService.RefreshTokenAsync(requestData.SessionKey, requestData.RotationCounter, requestData.SessionSign, false, null, null, cancellationToken);
             if (result != null)
             {
                 return Ok(new RefreshKeyResponseData

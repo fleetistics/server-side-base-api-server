@@ -8,8 +8,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace api_server.Controllers.MapData
 {
-	public class MobileGpsController : AuthAPIController
-	{
+	public class MobileGpsController : LocationAuthAPIController
+    {
 		public MobileGpsController(IRepository repository, MobileGpsDeviceMapTrackService mapTrackService)
 		{
 			mRepository = repository;
@@ -21,13 +21,13 @@ namespace api_server.Controllers.MapData
 		[ProducesResponseType(StatusCodes.Status400BadRequest)]
 		public async Task<IActionResult> LocationReport([FromBody] List<MobileLocation?> requestData, CancellationToken cancellationToken)
 		{
-			if (MobileGpsDeviceId is null)
-			{
-				return BadRequest(new { message = "MobileGpsDeviceId claim is missing in the access token." });
-			}
+			//if (MobileGpsDeviceId is null)
+			//{
+			//	return BadRequest(new { message = "MobileGpsDeviceId claim is missing in the access token." });
+			//}
 
 			// Invalid JSON, a non-array body or an item of the wrong shape never gets here: the framework answers 400.
-			await mMapTrackService.ParseAndUpdateDeviceLocationsAsync(UserId, CompanyId, MobileGpsDeviceId.Value, requestData, cancellationToken);
+			await mMapTrackService.ParseAndUpdateDeviceLocationsAsync(UserId, MobileGpsDeviceId, requestData, cancellationToken);
 			return Ok();
 		}
 

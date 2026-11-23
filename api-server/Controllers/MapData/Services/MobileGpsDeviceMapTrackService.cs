@@ -55,7 +55,7 @@ namespace api_server.Controllers.MapData.Services
         /// Queues a parsed location report for the background worker, which turns it into track points and updates the
         /// device's map state (see <see cref="processUpdateTrackPoints"/>).
         /// </summary>
-        public async Task ParseAndUpdateDeviceLocationsAsync(int userId, int? companyId, int mobileGpsDeviceId, List<MobileLocation?> locations, CancellationToken cancellationToken)
+        public async Task ParseAndUpdateDeviceLocationsAsync(int userId, int mobileGpsDeviceId, List<MobileLocation?> locations, CancellationToken cancellationToken)
         {
             if (locations.Count == 0) return;
 
@@ -64,7 +64,7 @@ namespace api_server.Controllers.MapData.Services
                 Type = CommandType.UpdateTrackPoints,
                 UserId = userId,
                 MobileGpsDeviceId = mobileGpsDeviceId,
-                CompanyId = companyId,
+                CompanyId = null,
                 ReceivedAt = DateTime.UtcNow,
                 TrackPoints = locations
             }, cancellationToken);
@@ -154,7 +154,7 @@ namespace api_server.Controllers.MapData.Services
             var stateData = await repository.GetByIdAsync<GpsDeviceStateData>(deviceId, cancellationToken);
             
             short mapStateStatusId = GpsDeviceMapStatus.Visible;
-            if (stateData == null)
+            if (stateData == null )
             {
                 //ToDo - load actual PrivateMode
                 // A device that has not been on the map yet: only an active one gets its rows.
@@ -256,7 +256,7 @@ namespace api_server.Controllers.MapData.Services
                             mapState = new GpsDeviceMapState
                             {
                                 GpsDeviceId = deviceId,
-                                CompanyId = command.CompanyId,
+                                //CompanyId = command.CompanyId,
                                 Location = locationPoint,
                                 LocationAccuracyId = locationAccuracy,
                                 Speed = speedKmh,
@@ -269,7 +269,7 @@ namespace api_server.Controllers.MapData.Services
                     }
                     else
                     {
-                        mapState.CompanyId = command.CompanyId;
+                        //mapState.CompanyId = command.CompanyId;
                         mapState.ActivityStatusId = activityStatusId;
                         if (locationAccuracy != GPSLocationAccuracy.Bad)
                         {

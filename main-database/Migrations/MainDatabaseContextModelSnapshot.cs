@@ -1038,7 +1038,7 @@ namespace main_database.Migrations
 
             modelBuilder.Entity("db_model.Map.GpsDeviceMapStatus", b =>
                 {
-                    b.Property<byte>("Id")
+                    b.Property<short>("Id")
                         .HasColumnType("smallint");
 
                     b.Property<DateTime>("LatestUpdate")
@@ -2128,6 +2128,12 @@ namespace main_database.Migrations
 
                             b1.Property<DateTime>("LatestRefreshTime")
                                 .HasColumnType("timestamp with time zone");
+
+                            b1.Property<DateTime?>("LocationReportTokenLatestRefreshTime")
+                                .HasColumnType("timestamp with time zone");
+
+                            b1.Property<int?>("LocationReportTokenRotationCounter")
+                                .HasColumnType("integer");
 
                             b1.Property<int>("RotationCounter")
                                 .HasColumnType("integer");

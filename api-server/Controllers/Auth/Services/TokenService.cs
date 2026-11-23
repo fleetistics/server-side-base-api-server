@@ -10,6 +10,28 @@ namespace api_server.Auth
     /// <summary>A refresh key in both forms: its three fields, and the {SessionKey}.{RotationCounter}.{SessionSign} string for the cookie.</summary>
     public sealed record RotationKey(string SessionKey, int RotationCounter, string SessionSign, string CompositeCookieKey);
 
+    /// <summary>Which refresh chain of a session a rotation key belongs to. Each chain has its own counter
+    /// (UserSession.Token.RotationCounter / LocationReportTokenRotationCounter) and its own MAC domain, so a key
+    /// of one chain never verifies as a key of the other, even when both counters hold the same value.</summary>
+    public enum RotationKeyPurpose
+    {
+        /// <summary>The main session chain: refresh cookie, /api/auth/refresh, check-session.</summary>
+        Session,
+        /// <summary>The app's location-report chain: /api/auth/refresh-app-location-token.</summary>
+        LocationReport,
+    }
+
+    /// <summary>Which endpoints an access token is for. Each kind is issued with its own audience and accepted only
+    /// by its own authentication scheme (see AuthSchemes), so a token of one kind is refused everywhere the other
+    /// kind is expected.</summary>
+    public enum AccessTokenKind
+    {
+        /// <summary>Every API endpoint except the location report (AuthAPIController, default scheme).</summary>
+        Api,
+        /// <summary>Only the location report (LocationAuthAPIController, AuthSchemes.LocationReport).</summary>
+        LocationReport,
+    }
+
     public class TokenService(IOptions<JwtOptions> jwtOptions)
     {
         private const string TokenUseClaim = "token_use";
@@ -32,7 +54,7 @@ namespace api_server.Auth
             Encoding.UTF8.GetBytes(jwtOptions.Value.SigningKey),
             Encoding.UTF8.GetBytes("refresh-rotation-key-v1"));
 
-        public string CreateAccessToken(string userId, string sessionId, string? mobileGpsDeviceId = null, IEnumerable<string>? roles = null, string? teamId = null, string? companyId = null)
+        public string CreateAccessToken(string userId, string sessionId, string? mobileGpsDeviceId = null, IEnumerable<string>? roles = null, string? teamId = null, string? companyId = null, AccessTokenKind kind = AccessTokenKind.Api)
         {
             var claims = new List<Claim>
             {
@@ -64,7 +86,12 @@ namespace api_server.Auth
 
             var token = new JwtSecurityToken(
                 issuer: _options.Issuer,
-                audience: _options.Audience,
+                audience: kind switch
+                {
+                    AccessTokenKind.Api => _options.Audience,
+                    AccessTokenKind.LocationReport => _options.LocationReportAudience,
+                    _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+                },
                 claims: claims,
                 expires: DateTime.UtcNow.AddMinutes(_options.AccessTokenMinutes),
                 signingCredentials: creds);
@@ -77,14 +104,16 @@ namespace api_server.Auth
 
         // The refresh key: "{sessionKey}.{counter}.{mac}". sessionKey is the session's random handle
         // (UserSession.SessionKey, see GenerateKey), not its database id. The mac is
-        // HMAC-SHA256(server secret, "rt2|{sessionKey}|{counter}|{salt}"), so the server can recompute the key of
+        // HMAC-SHA256(server secret, "{domain}|{sessionKey}|{counter}|{salt}"), so the server can recompute the key of
         // any counter of a session (it never has to store one) while nobody without the secret can forge it.
+        // The domain label depends on the purpose (see MacDomain): both chains share sessionKey and salt, so without
+        // it the location key for counter N would be the very same string as the session key for counter N.
         // Base64url never contains '.', so the split is unambiguous.
         // The mac is computed once and handed out both as the separate fields and as the combined value, so nobody
         // downstream has to sign, split or join anything.
-        public RotationKey CreateRotationKey(string sessionKey, int counter, string salt)
+        public RotationKey CreateRotationKey(string sessionKey, int counter, string salt, RotationKeyPurpose purpose)
         {
-            var sign = Base64UrlEncoder.Encode(ComputeRotationMac(sessionKey, counter, salt));
+            var sign = Base64UrlEncoder.Encode(ComputeRotationMac(sessionKey, counter, salt, purpose));
             return new RotationKey(sessionKey, counter, sign, $"{sessionKey}.{counter}.{sign}");
         }
 
@@ -124,8 +153,9 @@ namespace api_server.Auth
         //public bool IsValidRotationMac(string sessionKey, int counter, string salt, byte[] presentedMac) =>
         //    CryptographicOperations.FixedTimeEquals(ComputeRotationMac(sessionKey, counter, salt), presentedMac);
 
-        /// <summary>Same check for a mac that arrives as text; a malformed one is simply not valid (never an exception).</summary>
-        public bool IsValidRotationMac(string presentedSessionKey, int presentedCounter, string salt, string? presentedMac)
+        /// <summary>Same check for a mac that arrives as text; a malformed one is simply not valid (never an exception).
+        /// A key of the other chain (<paramref name="purpose"/>) is not valid either.</summary>
+        public bool IsValidRotationMac(string presentedSessionKey, int presentedCounter, string salt, string? presentedMac, RotationKeyPurpose purpose)
         {
             if (string.IsNullOrEmpty(presentedMac))
             {
@@ -140,11 +170,20 @@ namespace api_server.Auth
             {
                 return false;
             }
-            return CryptographicOperations.FixedTimeEquals(ComputeRotationMac(presentedSessionKey, presentedCounter, salt), mac);
+            return CryptographicOperations.FixedTimeEquals(ComputeRotationMac(presentedSessionKey, presentedCounter, salt, purpose), mac);
         }
+        public int GetAccesstokenExpirationInSeconds() => _options.AccessTokenMinutes * 60;
 
-        private byte[] ComputeRotationMac(string sessionKey, int counter, string salt) =>
-            HMACSHA256.HashData(_refreshKey, Encoding.UTF8.GetBytes($"rt2|{sessionKey}|{counter}|{salt}"));
+        // Session keeps "rt2", the label every key issued so far was signed with, so existing cookies stay valid.
+        private static string MacDomain(RotationKeyPurpose purpose) => purpose switch
+        {
+            RotationKeyPurpose.Session => "rt2",
+            RotationKeyPurpose.LocationReport => "rt2-loc",
+            _ => throw new ArgumentOutOfRangeException(nameof(purpose), purpose, null),
+        };
+
+        private byte[] ComputeRotationMac(string sessionKey, int counter, string salt, RotationKeyPurpose purpose) =>
+            HMACSHA256.HashData(_refreshKey, Encoding.UTF8.GetBytes($"{MacDomain(purpose)}|{sessionKey}|{counter}|{salt}"));
 
         public CookieOptions BuildRefreshCookieOptions(bool isHttps, DateTime? persistentUntilUtc)
         {

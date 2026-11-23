@@ -71,7 +71,10 @@ not on loopback, set `ForwardedHeaders:KnownProxies` (addresses) and/or
 proxy's rate-limit partition. `AuthAPIController` base class = `[Authorize]`
 plus `UserId`/`SessionId` claims. Role policies live in `core/AuthPolicies.cs`.
 Login is rate-limited (fixed window per IP, `RateLimiting:Login:PermitLimit`,
-default 5/min).
+default 5/min). The refresh endpoints use a token bucket per IP: a burst of
+`PermitLimit` (default 200), then `ReplenishPerMinute` (default 100), set under
+`RateLimiting:Refresh` (session refresh / check-session) and
+`RateLimiting:LocationRefresh` (`/api/auth/refresh-app-location-token`, its own bucket).
 
 *Deploying the refresh-key change:* the migration expires every Active portal/app
 login session (sources 2 and 3), so those users sign in once; auto-device sessions
