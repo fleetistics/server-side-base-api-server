@@ -1,15 +1,13 @@
 using api_server.Controllers.Join;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Shouldly;
 
 namespace api_server.IntegrationTests;
 
-/// <summary>The one-time join codes (JoinCodes) and the brake on guessing them (JoinAttemptThrottle): no database.</summary>
+/// <summary>The join codes (JoinCodes) and the brake on guessing them (JoinAttemptThrottle): no database.</summary>
 public sealed class JoinCodesTests
 {
-    private static JoinCodes Codes(string key = "test-key-0123456789") =>
-        new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Jwt:SigningKey"] = key }).Build());
+    private static JoinCodes Codes() => new();
 
     [Fact]
     public void A_generated_code_has_two_groups_of_four_symbols_from_the_alphabet()
@@ -38,15 +36,22 @@ public sealed class JoinCodesTests
     [InlineData("K7QM-4XPDX")]
     public void A_typed_text_of_the_wrong_length_is_not_a_code(string? typed) => JoinCodes.Normalize(typed).ShouldBeNull();
 
+    [Theory]
+    [InlineData("k7qm-4xpd", "K7QM-4XPD")]
+    [InlineData("  K7QM 4XPD ", "K7QM-4XPD")]
+    [InlineData("K7QM4XPD", "K7QM-4XPD")]
+    public void A_typed_code_is_formatted_the_way_it_is_stored(string typed, string expected) => JoinCodes.Format(typed).ShouldBe(expected);
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("K7QM")]
+    public void A_text_that_is_not_a_code_has_no_stored_form(string? typed) => JoinCodes.Format(typed).ShouldBeNull();
+
     [Fact]
-    public void The_hash_is_stable_per_code_and_differs_between_codes_and_keys()
+    public void A_generated_code_is_already_in_the_stored_form()
     {
-        var a = Codes();
-        a.Hash("K7QM4XPD").ShouldBe(a.Hash("K7QM4XPD"));
-        a.Hash("K7QM4XPD").ShouldNotBe(a.Hash("K7QM4XPE"));
-        a.Hash("K7QM4XPD").ShouldNotBe(Codes("another-key-0123456789").Hash("K7QM4XPD"));
-        a.Hash("K7QM4XPD").ShouldNotContain("K7QM");
-        a.Hash("K7QM4XPD").Length.ShouldBe(64);
+        var code = Codes().Generate();
+        JoinCodes.Format(code).ShouldBe(code);
     }
 
     [Fact]

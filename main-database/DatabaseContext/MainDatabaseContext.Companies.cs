@@ -35,6 +35,12 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 				entity.HasKey(e => e.Id);
 				entity.Property(e => e.Id).ValueGeneratedNever();
 			});
+			modelBuilder.Entity<UserJoinInvitationType>(entity =>
+			{
+				entity.ToTable("user_join_invitation_type");
+				entity.HasKey(e => e.Id);
+				entity.Property(e => e.Id).ValueGeneratedNever();
+			});
 			modelBuilder.Entity<UserJoinRequestStatus>(entity =>
 			{
 				entity.ToTable("user_join_request_status");
@@ -93,9 +99,8 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 				entity.ToTable("user_join_invitation");
 				entity.HasKey(e => e.Id);
 				entity.Property(e => e.Id).ValueGeneratedOnAdd();
-				entity.Property(e => e.JoinCode).IsRequired();
 				entity.Property(e => e.JoinQrCodeImageName).IsRequired();
-				// The code is how an invitation is looked up when a user joins.
+				// The code is how an invitation is looked up when a user joins (null for User invitations; Postgres allows many nulls).
 				entity.HasIndex(e => e.JoinCode).IsUnique();
 				entity.HasIndex(e => e.CompanyId);
 				entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Cascade);

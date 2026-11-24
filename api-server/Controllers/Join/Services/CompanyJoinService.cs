@@ -16,7 +16,6 @@ namespace api_server.Controllers.Join.Services
 		Done,
 		NotFound,
 		InvalidEmail,
-		InvalidExpiry,
 		/// <summary>The person with that address is already a member of the company.</summary>
 		AlreadyMember,
 		RoleNotAllowed,
@@ -36,19 +35,26 @@ namespace api_server.Controllers.Join.Services
 	{
 		Task<IReadOnlyList<JoinInvitationRowDto>> ListInvitationsAsync(int companyId, CancellationToken cancellationToken);
 
-		/// <summary>Cancels the open invitations to the same address, makes a new one and sends the email.</summary>
+		/// <summary>Cancels the open invitations to the same address, makes a new one (it uses the company's code) and sends the email.</summary>
 		Task<(JoinOutcome Outcome, InvitationResultDto? Result)> InviteAsync(int companyId, int userId, InviteUserDto request, string? portalBaseUrl, CancellationToken cancellationToken);
 
-		/// <summary>Gives the invitation a new code and a new expiry (the same length as before) and sends the email again.</summary>
+		/// <summary>Sends the email of an open invitation again, with the same code and the same expiry.</summary>
+		Task<(JoinOutcome Outcome, InvitationResultDto? Result)> ResendAsync(int companyId, int invitationId, string? portalBaseUrl, CancellationToken cancellationToken);
+
+		/// <summary>Gives an expired (or open) invitation a new expiry, counted from now by the configured length, and sends the email again.</summary>
 		Task<(JoinOutcome Outcome, InvitationResultDto? Result)> RenewAsync(int companyId, int invitationId, string? portalBaseUrl, CancellationToken cancellationToken);
 
-		/// <summary>Cancels an invitation or the company code that is still open.</summary>
+		/// <summary>Cancels an invitation to a person that is still open. The company code is not cancelled this way.</summary>
 		Task<JoinOutcome> RevokeAsync(int companyId, int invitationId, CancellationToken cancellationToken);
 
-		/// <summary>Cancels the company's open join code and makes a new one with the same settings (or the defaults when there was none).</summary>
-		Task<CompanyJoinCodeDto> NewCompanyCodeAsync(int companyId, int userId, CancellationToken cancellationToken);
+		/// <summary>The company's anonymous join code; made (with the configured role, no group, admin approval on) when there is none yet.</summary>
+		Task<CompanyJoinCodeDto> GetCompanyCodeAsync(int companyId, int userId, CancellationToken cancellationToken);
 
-		Task<JoinOutcome> UpdateCompanyCodeAsync(int companyId, int invitationId, UpdateCompanyJoinCodeDto request, CancellationToken cancellationToken);
+		/// <summary>New code on the same row, and the settings the admin chose. Whatever the old code was used for stops working.</summary>
+		Task<(JoinOutcome Outcome, CompanyJoinCodeDto? Result)> RegenerateCompanyCodeAsync(int companyId, int userId, RegenerateCompanyJoinCodeDto request, CancellationToken cancellationToken);
+
+		/// <summary>Switches joining with the company link on or off (the row goes between Active and Disabled).</summary>
+		Task<CompanyJoinCodeDto> SetCompanyCodeEnabledAsync(int companyId, int userId, bool enabled, CancellationToken cancellationToken);
 
 		Task<IReadOnlyList<JoinRequestRowDto>> ListRequestsAsync(int companyId, CancellationToken cancellationToken);
 
@@ -71,7 +77,7 @@ namespace api_server.Controllers.Join.Services
 
 		public async Task<IReadOnlyList<JoinInvitationRowDto>> ListInvitationsAsync(int companyId, CancellationToken cancellationToken)
 		{
-			var items = await mRepository.GetQueryable<UserJoinInvitation>(i => i.CompanyId == companyId && i.IsPersonal == true)
+			var items = await mRepository.GetQueryable<UserJoinInvitation>(i => i.CompanyId == companyId && i.TypeId != UserJoinInvitationType.Company)
 				.AsNoTracking().OrderByDescending(i => i.CreationDate).ToListAsync(cancellationToken);
 			var creatorIds = items.Select(i => i.CreatedByUserId).Distinct().ToList();
 			var creators = await mRepository.GetQueryable<User>(u => creatorIds.Contains(u.Id))
@@ -85,9 +91,6 @@ namespace api_server.Controllers.Join.Services
 			var email = (request.Email ?? "").Trim();
 			if (!IsEmailAddress(email)) return (JoinOutcome.InvalidEmail, null);
 
-			var days = request.ExpiresInDays ?? mOptions.DefaultInviteDays;
-			if (days < 1 || days > Math.Max(1, mOptions.MaxInviteDays)) return (JoinOutcome.InvalidExpiry, null);
-
 			if (request.PermissionRoleId is int roleId && !await mRepository.GetQueryable<PermissionRole>(r => r.Id == roleId && (r.CompanyId == null || r.CompanyId == companyId)).AnyAsync(cancellationToken))
 				return (JoinOutcome.RoleNotAllowed, null);
 			if (request.GroupId is int groupId && !await mRepository.GetQueryable<UserGroup>(g => g.Id == groupId && g.CompanyId == companyId).AnyAsync(cancellationToken))
@@ -95,6 +98,9 @@ namespace api_server.Controllers.Join.Services
 
 			var (alreadyMember, knownUserId) = await FindUserByEmailAsync(companyId, email, cancellationToken);
 			if (alreadyMember) return (JoinOutcome.AlreadyMember, null);
+
+			// The person is let in with the company's code, so the company has to have one.
+			var company = await EnsureCompanyRowAsync(companyId, userId, cancellationToken);
 
 			// A newer invitation to the same address replaces the older one.
 			await CancelOpenInvitationsAsync(companyId, email, exceptId: null, cancellationToken);
@@ -105,9 +111,10 @@ namespace api_server.Controllers.Join.Services
 				CompanyId = companyId,
 				CreatedByUserId = userId,
 				JoinQrCodeImageName = "",
+				JoinCode = null,
 				PermissionRoleId = request.PermissionRoleId,
 				GroupId = request.GroupId,
-				IsPersonal = true,
+				TypeId = UserJoinInvitationType.User,
 				DoesNotRequireAdminApproval = !request.RequireAdminApproval,
 				UserId = knownUserId,
 				Email = email,
@@ -115,19 +122,31 @@ namespace api_server.Controllers.Join.Services
 				Message = NullIfBlank(request.Message),
 				StatusId = UserJoinInvitationStatus.Active,
 				CreationDate = now,
-				ExpirationDate = now.AddDays(days),
+				ExpirationDate = now.AddDays(InviteDays()),
 				LatestUpdate = now,
 			};
-			var code = await SetNewCodeAsync(invitation, cancellationToken);
 			mRepository.Create(invitation);
 			await mRepository.SaveAsync(cancellationToken);
 
-			return (JoinOutcome.Done, await ResultAsync(invitation, code, userId, portalBaseUrl, cancellationToken));
+			return (JoinOutcome.Done, await ResultAsync(invitation, company.JoinCode!, userId, portalBaseUrl, cancellationToken));
+		}
+
+		public async Task<(JoinOutcome Outcome, InvitationResultDto? Result)> ResendAsync(int companyId, int invitationId, string? portalBaseUrl, CancellationToken cancellationToken)
+		{
+			var invitation = await FindPersonInvitationAsync(companyId, invitationId, cancellationToken);
+			if (invitation == null) return (JoinOutcome.NotFound, null);
+			if (invitation.StatusId != UserJoinInvitationStatus.Active || invitation.ExpirationDate <= Now()) return (JoinOutcome.WrongState, null);
+
+			var (alreadyMember, _) = await FindUserByEmailAsync(companyId, invitation.Email!, cancellationToken);
+			if (alreadyMember) return (JoinOutcome.AlreadyMember, null);
+
+			var code = await CodeOfAsync(invitation, cancellationToken);
+			return (JoinOutcome.Done, await ResultAsync(invitation, code, invitation.CreatedByUserId, portalBaseUrl, cancellationToken));
 		}
 
 		public async Task<(JoinOutcome Outcome, InvitationResultDto? Result)> RenewAsync(int companyId, int invitationId, string? portalBaseUrl, CancellationToken cancellationToken)
 		{
-			var invitation = await mRepository.GetQueryable<UserJoinInvitation>(i => i.Id == invitationId && i.CompanyId == companyId && i.IsPersonal == true).SingleOrDefaultAsync(cancellationToken);
+			var invitation = await FindPersonInvitationAsync(companyId, invitationId, cancellationToken);
 			if (invitation == null) return (JoinOutcome.NotFound, null);
 			// An accepted one is used up; a cancelled one was replaced or withdrawn on purpose.
 			if (invitation.StatusId is not (UserJoinInvitationStatus.Active or UserJoinInvitationStatus.Expired)) return (JoinOutcome.WrongState, null);
@@ -139,14 +158,11 @@ namespace api_server.Controllers.Join.Services
 			await CancelOpenInvitationsAsync(companyId, email, exceptId: invitation.Id, cancellationToken);
 
 			var now = Now();
-			var length = invitation.ExpirationDate - invitation.CreationDate;
-			var days = Math.Clamp((int)Math.Round(length.TotalDays), 1, Math.Max(1, mOptions.MaxInviteDays));
 			invitation.UserId = knownUserId;
 			invitation.StatusId = UserJoinInvitationStatus.Active;
-			invitation.CreationDate = now;
-			invitation.ExpirationDate = now.AddDays(days);
+			invitation.ExpirationDate = now.AddDays(InviteDays());
 			invitation.LatestUpdate = now;
-			var code = await SetNewCodeAsync(invitation, cancellationToken);
+			var code = await CodeOfAsync(invitation, cancellationToken);
 			await mRepository.SaveAsync(cancellationToken);
 
 			return (JoinOutcome.Done, await ResultAsync(invitation, code, invitation.CreatedByUserId, portalBaseUrl, cancellationToken));
@@ -154,70 +170,51 @@ namespace api_server.Controllers.Join.Services
 
 		public async Task<JoinOutcome> RevokeAsync(int companyId, int invitationId, CancellationToken cancellationToken)
 		{
-			var invitation = await mRepository.GetQueryable<UserJoinInvitation>(i => i.Id == invitationId && i.CompanyId == companyId).SingleOrDefaultAsync(cancellationToken);
+			var invitation = await FindPersonInvitationAsync(companyId, invitationId, cancellationToken);
 			if (invitation == null) return JoinOutcome.NotFound;
 			if (invitation.StatusId is UserJoinInvitationStatus.Accepted) return JoinOutcome.WrongState;
 			if (invitation.StatusId is UserJoinInvitationStatus.Cancelled) return JoinOutcome.Done;
 
 			invitation.StatusId = UserJoinInvitationStatus.Cancelled;
+			invitation.LatestUpdate = Now();
 			await mRepository.SaveAsync(cancellationToken);
 			return JoinOutcome.Done;
 		}
 
-		public async Task<CompanyJoinCodeDto> NewCompanyCodeAsync(int companyId, int userId, CancellationToken cancellationToken)
+		public async Task<CompanyJoinCodeDto> GetCompanyCodeAsync(int companyId, int userId, CancellationToken cancellationToken)
 		{
-			var open = await mRepository.GetQueryable<UserJoinInvitation>(i => i.CompanyId == companyId && i.IsPersonal == false && i.StatusId == UserJoinInvitationStatus.Active)
-				.ToListAsync(cancellationToken);
-			var previous = open.OrderByDescending(i => i.CreationDate).FirstOrDefault();
-			foreach (var old in open) old.StatusId = UserJoinInvitationStatus.Cancelled;
-
-			var now = Now();
-			var invitation = new UserJoinInvitation
-			{
-				CompanyId = companyId,
-				CreatedByUserId = userId,
-				JoinQrCodeImageName = "",
-				IsPersonal = false,
-				StatusId = UserJoinInvitationStatus.Active,
-				CreationDate = now,
-				ExpirationDate = now.AddDays(Math.Max(1, mOptions.CompanyCodeDays)),
-				LatestUpdate = now,
-				// What the last code gave is what the next one gives; the first time, the company's default role and approval by an admin.
-				PermissionRoleId = previous != null ? previous.PermissionRoleId : await JoinMembership.ResolveRoleAsync(mRepository, companyId, null, cancellationToken),
-				GroupId = previous?.GroupId,
-				DoesNotRequireAdminApproval = previous?.DoesNotRequireAdminApproval ?? false,
-			};
-			var code = await SetNewCodeAsync(invitation, cancellationToken);
-			mRepository.Create(invitation);
-			await mRepository.SaveAsync(cancellationToken);
-
-			return new CompanyJoinCodeDto
-			{
-				Id = invitation.Id,
-				JoinCode = code,
-				ExpirationDate = invitation.ExpirationDate,
-				PermissionRoleId = invitation.PermissionRoleId,
-				GroupId = invitation.GroupId,
-				RequireAdminApproval = invitation.DoesNotRequireAdminApproval != true,
-			};
+			var row = await EnsureCompanyRowAsync(companyId, userId, cancellationToken);
+			return await CompanyDtoAsync(row, cancellationToken);
 		}
 
-		public async Task<JoinOutcome> UpdateCompanyCodeAsync(int companyId, int invitationId, UpdateCompanyJoinCodeDto request, CancellationToken cancellationToken)
+		public async Task<(JoinOutcome Outcome, CompanyJoinCodeDto? Result)> RegenerateCompanyCodeAsync(int companyId, int userId, RegenerateCompanyJoinCodeDto request, CancellationToken cancellationToken)
 		{
-			var invitation = await mRepository.GetQueryable<UserJoinInvitation>(i => i.Id == invitationId && i.CompanyId == companyId && i.IsPersonal == false).SingleOrDefaultAsync(cancellationToken);
-			if (invitation == null) return JoinOutcome.NotFound;
-			if (invitation.StatusId != UserJoinInvitationStatus.Active) return JoinOutcome.WrongState;
-
 			if (request.PermissionRoleId is int roleId && !await mRepository.GetQueryable<PermissionRole>(r => r.Id == roleId && (r.CompanyId == null || r.CompanyId == companyId)).AnyAsync(cancellationToken))
-				return JoinOutcome.RoleNotAllowed;
+				return (JoinOutcome.RoleNotAllowed, null);
 			if (request.GroupId is int groupId && !await mRepository.GetQueryable<UserGroup>(g => g.Id == groupId && g.CompanyId == companyId).AnyAsync(cancellationToken))
-				return JoinOutcome.GroupNotAllowed;
+				return (JoinOutcome.GroupNotAllowed, null);
 
-			invitation.PermissionRoleId = request.PermissionRoleId;
-			invitation.GroupId = request.GroupId;
-			invitation.DoesNotRequireAdminApproval = !request.RequireAdminApproval;
+			var row = await EnsureCompanyRowAsync(companyId, userId, cancellationToken);
+			row.PermissionRoleId = request.PermissionRoleId;
+			row.GroupId = request.GroupId;
+			row.DoesNotRequireAdminApproval = !request.RequireAdminApproval;
+			row.JoinCode = await NewCodeAsync(cancellationToken);
+			row.LatestUpdate = Now();
 			await mRepository.SaveAsync(cancellationToken);
-			return JoinOutcome.Done;
+			return (JoinOutcome.Done, await CompanyDtoAsync(row, cancellationToken));
+		}
+
+		public async Task<CompanyJoinCodeDto> SetCompanyCodeEnabledAsync(int companyId, int userId, bool enabled, CancellationToken cancellationToken)
+		{
+			var row = await EnsureCompanyRowAsync(companyId, userId, cancellationToken);
+			var status = enabled ? UserJoinInvitationStatus.Active : UserJoinInvitationStatus.Disabled;
+			if (row.StatusId != status)
+			{
+				row.StatusId = status;
+				row.LatestUpdate = Now();
+				await mRepository.SaveAsync(cancellationToken);
+			}
+			return await CompanyDtoAsync(row, cancellationToken);
 		}
 
 		public async Task<IReadOnlyList<JoinRequestRowDto>> ListRequestsAsync(int companyId, CancellationToken cancellationToken)
@@ -229,7 +226,7 @@ namespace api_server.Controllers.Join.Services
 			var users = await mRepository.GetQueryable<User>(u => userIds.Contains(u.Id))
 				.AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FullName, u.UserName, u.Email }).ToDictionaryAsync(u => u.Id, cancellationToken);
 			var invitations = await mRepository.GetQueryable<UserJoinInvitation>(i => invitationIds.Contains(i.Id))
-				.AsNoTracking().Select(i => new { i.Id, i.IsPersonal, i.Message, i.PermissionRoleId, i.GroupId }).ToDictionaryAsync(i => i.Id, cancellationToken);
+				.AsNoTracking().Select(i => new { i.Id, i.TypeId, i.Message, i.PermissionRoleId, i.GroupId }).ToDictionaryAsync(i => i.Id, cancellationToken);
 
 			return requests.Select(r =>
 			{
@@ -243,7 +240,7 @@ namespace api_server.Controllers.Join.Services
 					Email = u?.Email,
 					Message = i?.Message,
 					InvitationId = r.UserJoinInvitationId,
-					ViaCompanyCode = i?.IsPersonal != true,
+					ViaCompanyCode = i?.TypeId == UserJoinInvitationType.Company,
 					StatusId = r.StatusId,
 					CreationDate = r.CreationDate,
 					PermissionRoleId = i?.PermissionRoleId,
@@ -286,24 +283,106 @@ namespace api_server.Controllers.Join.Services
 
 		private DateTime Now() => mTime.GetUtcNow().UtcDateTime;
 
-		/// <summary>Puts a fresh code's hash on the invitation (retrying on the rare clash with another invitation's) and returns the plain code.</summary>
-		private async Task<string> SetNewCodeAsync(UserJoinInvitation invitation, CancellationToken cancellationToken)
+		private int InviteDays() => Math.Max(1, mOptions.DefaultInviteDays);
+
+		/// <summary>An unused code (retrying on the rare clash with one that exists).</summary>
+		private async Task<string> NewCodeAsync(CancellationToken cancellationToken)
 		{
 			for (var attempt = 0; attempt < 10; attempt++)
 			{
 				var code = mCodes.Generate();
-				var hash = mCodes.Hash(JoinCodes.Normalize(code)!);
-				if (await mRepository.GetQueryable<UserJoinInvitation>(i => i.JoinCode == hash).AnyAsync(cancellationToken)) continue;
-				invitation.JoinCode = hash;
-				return code;
+				if (!await mRepository.GetQueryable<UserJoinInvitation>(i => i.JoinCode == code).AnyAsync(cancellationToken)) return code;
 			}
 			throw new InvalidOperationException("Could not find an unused join code.");
+		}
+
+		/// <summary>An invitation to a person (a User or Personal one) of the company, tracked.</summary>
+		private Task<UserJoinInvitation?> FindPersonInvitationAsync(int companyId, int invitationId, CancellationToken cancellationToken) =>
+			mRepository.GetQueryable<UserJoinInvitation>(i => i.Id == invitationId && i.CompanyId == companyId && i.TypeId != UserJoinInvitationType.Company).SingleOrDefaultAsync(cancellationToken);
+
+		/// <summary>The code an invitation is accepted with: its own (Personal) or the company's (User).</summary>
+		private async Task<string> CodeOfAsync(UserJoinInvitation invitation, CancellationToken cancellationToken)
+		{
+			if (invitation.JoinCode != null) return invitation.JoinCode;
+			return (await EnsureCompanyRowAsync(invitation.CompanyId, invitation.CreatedByUserId, cancellationToken)).JoinCode!;
+		}
+
+		/// <summary>The company's anonymous row (Active or Disabled), made when there is none. A second one made by a parallel request is cancelled.</summary>
+		private async Task<UserJoinInvitation> EnsureCompanyRowAsync(int companyId, int userId, CancellationToken cancellationToken)
+		{
+			var rows = await mRepository.GetQueryable<UserJoinInvitation>(i => i.CompanyId == companyId && i.TypeId == UserJoinInvitationType.Company && i.Email == null
+					&& (i.StatusId == UserJoinInvitationStatus.Active || i.StatusId == UserJoinInvitationStatus.Disabled))
+				.OrderBy(i => i.Id).ToListAsync(cancellationToken);
+			if (rows.Count > 0)
+			{
+				if (rows.Count > 1)
+				{
+					foreach (var extra in rows.Skip(1)) extra.StatusId = UserJoinInvitationStatus.Cancelled;
+					await mRepository.SaveAsync(cancellationToken);
+				}
+				return rows[0];
+			}
+
+			var now = Now();
+			var row = new UserJoinInvitation
+			{
+				CompanyId = companyId,
+				CreatedByUserId = userId,
+				JoinQrCodeImageName = "",
+				TypeId = UserJoinInvitationType.Company,
+				PermissionRoleId = await ConfiguredRoleAsync(companyId, cancellationToken),
+				GroupId = null,
+				DoesNotRequireAdminApproval = false,
+				StatusId = UserJoinInvitationStatus.Active,
+				CreationDate = now,
+				// It does not expire: it lasts until an admin regenerates or switches it off.
+				ExpirationDate = NoExpiry,
+				LatestUpdate = now,
+				JoinCode = await NewCodeAsync(cancellationToken),
+			};
+			mRepository.Create(row);
+			await mRepository.SaveAsync(cancellationToken);
+			return row;
+		}
+
+		/// <summary>The expiry stored on the company row, which never expires.</summary>
+		public static readonly DateTime NoExpiry = new(2999, 12, 31, 0, 0, 0, DateTimeKind.Utc);
+
+		/// <summary>The role named in Join:CompanyCodeRole (the company's own before a system one), else the company's default role.</summary>
+		private async Task<int?> ConfiguredRoleAsync(int companyId, CancellationToken cancellationToken)
+		{
+			var name = mOptions.CompanyCodeRole;
+			if (!string.IsNullOrWhiteSpace(name))
+			{
+				var roles = await mRepository.GetQueryable<PermissionRole>(r => r.CompanyId == null || r.CompanyId == companyId).AsNoTracking()
+					.Select(r => new { r.Id, r.Name, r.CompanyId }).ToListAsync(cancellationToken);
+				var found = roles.Where(r => string.Equals(r.Name, name.Trim(), StringComparison.OrdinalIgnoreCase)).OrderByDescending(r => r.CompanyId != null).Select(r => (int?)r.Id).FirstOrDefault();
+				if (found != null) return found;
+			}
+			return await JoinMembership.ResolveRoleAsync(mRepository, companyId, null, cancellationToken);
+		}
+
+		private async Task<CompanyJoinCodeDto> CompanyDtoAsync(UserJoinInvitation row, CancellationToken cancellationToken)
+		{
+			var now = Now();
+			var open = await mRepository.GetQueryable<UserJoinInvitation>(i => i.CompanyId == row.CompanyId && i.TypeId == UserJoinInvitationType.User
+				&& i.StatusId == UserJoinInvitationStatus.Active && i.ExpirationDate > now).CountAsync(cancellationToken);
+			return new CompanyJoinCodeDto
+			{
+				Id = row.Id,
+				JoinCode = row.JoinCode!,
+				Enabled = row.StatusId == UserJoinInvitationStatus.Active,
+				PermissionRoleId = row.PermissionRoleId,
+				GroupId = row.GroupId,
+				RequireAdminApproval = row.DoesNotRequireAdminApproval != true,
+				OpenInvitations = open,
+			};
 		}
 
 		private async Task CancelOpenInvitationsAsync(int companyId, string email, int? exceptId, CancellationToken cancellationToken)
 		{
 			var lower = email.ToLower();
-			var open = await mRepository.GetQueryable<UserJoinInvitation>(i => i.CompanyId == companyId && i.IsPersonal == true && i.StatusId == UserJoinInvitationStatus.Active
+			var open = await mRepository.GetQueryable<UserJoinInvitation>(i => i.CompanyId == companyId && i.TypeId != UserJoinInvitationType.Company && i.StatusId == UserJoinInvitationStatus.Active
 					&& i.Email != null && i.Email.ToLower() == lower && i.Id != exceptId)
 				.ToListAsync(cancellationToken);
 			foreach (var old in open) old.StatusId = UserJoinInvitationStatus.Cancelled;
@@ -339,7 +418,7 @@ namespace api_server.Controllers.Join.Services
 				CompanyName = companyName,
 				InviterName = inviterName,
 				JoinCode = code,
-				AcceptLink = $"{baseUrl}/join?invitation={invitation.Id}",
+				AcceptLink = $"{baseUrl}/join?code={Uri.EscapeDataString(code)}",
 				Message = invitation.Message,
 				ExpiresAtUtc = DateTime.SpecifyKind(invitation.ExpirationDate, DateTimeKind.Utc),
 			};
@@ -371,6 +450,7 @@ namespace api_server.Controllers.Join.Services
 		private static JoinInvitationRowDto ToRow(UserJoinInvitation i, string? createdByName, DateTime now) => new()
 		{
 			Id = i.Id,
+			TypeId = i.TypeId,
 			Email = i.Email,
 			Name = i.Name,
 			Message = i.Message,

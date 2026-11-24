@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace api_server.Controllers.Join
 {
 	/// <summary>
-	/// The Admin ▸ User Management ▸ "Invites & Join" tab: personal invitations, the company's one-time join code, and the requests that
+	/// The Admin ▸ User Management ▸ "Invites & Join" tab: invitations to people, the company's join code, and the requests that
 	/// come out of them. Everything belongs to the caller's company, which comes from the access token (403 without one).
 	///
 	/// NOTE: access is not restricted by role yet. Whoever can open the page can call these endpoints, and the menu only hides the page.
@@ -19,9 +19,9 @@ namespace api_server.Controllers.Join
 			mJoin = join;
 		}
 
-		// ---- personal invitations ----
+		// ---- invitations to people ----
 
-		/// <summary>The company's personal invitations, newest first. Their codes are not in it: only a hash is kept.</summary>
+		/// <summary>The company's invitations to people, newest first. The company code is not in it.</summary>
 		[HttpGet("/api/company/join/invitations")]
 		[ProducesResponseType(typeof(IReadOnlyList<JoinInvitationRowDto>), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -32,8 +32,8 @@ namespace api_server.Controllers.Join
 		}
 
 		/// <summary>
-		/// Invites one person: stores the invitation (with a hash of a new one-time code) and emails them the code and the link to the accept
-		/// page. Any open invitation to the same address is cancelled. The answer has the code in plain text, once, and says whether the
+		/// Invites one person: stores the invitation (it uses the company's code, so it has none of its own) and emails them the code and
+		/// the link of the accept page. Any open invitation to the same address is cancelled. The answer has the code and says whether the
 		/// email was queued. 409 when the address already belongs to a member.
 		/// </summary>
 		[HttpPost("/api/company/join/invitations")]
@@ -48,7 +48,20 @@ namespace api_server.Controllers.Join
 			return outcome == JoinOutcome.Done ? Created($"/api/company/join/invitations/{result!.Invitation.Id}", result) : Failure(outcome);
 		}
 
-		/// <summary>Resends an invitation with a new code and a new expiry (as long as before). 409 for an accepted or cancelled one.</summary>
+		/// <summary>Sends the email of an open invitation again, with the same code. 409 when it is expired, accepted or cancelled.</summary>
+		[HttpPost("/api/company/join/invitations/{invitationId:int}/resend")]
+		[ProducesResponseType(typeof(InvitationResultDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+		public async Task<IActionResult> Resend(int invitationId, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			var (outcome, result) = await mJoin.ResendAsync(companyId, invitationId, PortalBaseUrl(), cancellationToken);
+			return outcome == JoinOutcome.Done ? Ok(result) : Failure(outcome);
+		}
+
+		/// <summary>Renews an expired invitation: a new expiry (the configured length, from now) and the email again. 409 for an accepted or cancelled one.</summary>
 		[HttpPost("/api/company/join/invitations/{invitationId:int}/renew")]
 		[ProducesResponseType(typeof(InvitationResultDto), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -61,7 +74,7 @@ namespace api_server.Controllers.Join
 			return outcome == JoinOutcome.Done ? Ok(result) : Failure(outcome);
 		}
 
-		/// <summary>Cancels an open invitation (or the company code). 409 for an accepted one.</summary>
+		/// <summary>Cancels an open invitation to a person. 409 for an accepted one.</summary>
 		[HttpDelete("/api/company/join/invitations/{invitationId:int}")]
 		[ProducesResponseType(StatusCodes.Status204NoContent)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -77,30 +90,41 @@ namespace api_server.Controllers.Join
 		// ---- the company code ----
 
 		/// <summary>
-		/// Makes a new one-time company join code and cancels the one from before, so call it when the page opens. The new code gets
-		/// the role, group and approval setting of the old one. The answer has the code in plain text, once: it cannot be read back.
+		/// The company's join code, the one anonymous row. It stays the same between visits; it is made (with the role from the settings, no
+		/// group, admin approval on) only when the company has none.
 		/// </summary>
-		[HttpPost("/api/company/join/company-code")]
+		[HttpGet("/api/company/join/company-code")]
 		[ProducesResponseType(typeof(CompanyJoinCodeDto), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
-		public async Task<IActionResult> NewCompanyCode(CancellationToken cancellationToken)
+		public async Task<IActionResult> GetCompanyCode(CancellationToken cancellationToken)
 		{
 			if (CompanyId is not int companyId) return Forbid();
-			return Ok(await mJoin.NewCompanyCodeAsync(companyId, UserId, cancellationToken));
+			return Ok(await mJoin.GetCompanyCodeAsync(companyId, UserId, cancellationToken));
 		}
 
-		/// <summary>Sets what a person who joins with the current company code gets (replaces the three values). 409 when that code is no longer open.</summary>
-		[HttpPut("/api/company/join/company-code/{invitationId:int}")]
-		[ProducesResponseType(StatusCodes.Status204NoContent)]
+		/// <summary>
+		/// A new code on the same row, with the role, group and approval setting the admin chose. The old code stops working, and so do the
+		/// links and emails that carry it (open invitations to people need to be sent again).
+		/// </summary>
+		[HttpPost("/api/company/join/company-code/regenerate")]
+		[ProducesResponseType(typeof(CompanyJoinCodeDto), StatusCodes.Status200OK)]
 		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
-		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-		public async Task<IActionResult> UpdateCompanyCode(int invitationId, [FromBody] UpdateCompanyJoinCodeDto request, CancellationToken cancellationToken)
+		public async Task<IActionResult> RegenerateCompanyCode([FromBody] RegenerateCompanyJoinCodeDto request, CancellationToken cancellationToken)
 		{
 			if (CompanyId is not int companyId) return Forbid();
-			var outcome = await mJoin.UpdateCompanyCodeAsync(companyId, invitationId, request, cancellationToken);
-			return outcome == JoinOutcome.Done ? NoContent() : Failure(outcome);
+			var (outcome, result) = await mJoin.RegenerateCompanyCodeAsync(companyId, UserId, request, cancellationToken);
+			return outcome == JoinOutcome.Done ? Ok(result) : Failure(outcome);
+		}
+
+		/// <summary>Switches joining with the company link on or off. The code and the other settings stay as they are.</summary>
+		[HttpPut("/api/company/join/company-code/enabled")]
+		[ProducesResponseType(typeof(CompanyJoinCodeDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		public async Task<IActionResult> SetCompanyCodeEnabled([FromBody] SetCompanyJoinCodeEnabledDto request, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Ok(await mJoin.SetCompanyCodeEnabledAsync(companyId, UserId, request.Enabled, cancellationToken));
 		}
 
 		// ---- requests ----
@@ -147,7 +171,6 @@ namespace api_server.Controllers.Join
 		{
 			JoinOutcome.NotFound => Problem(title: "Not Found", detail: "There is no such invitation or request in this company.", statusCode: StatusCodes.Status404NotFound),
 			JoinOutcome.InvalidEmail => Problem(title: "Invalid email", detail: "Enter a valid email address.", statusCode: StatusCodes.Status400BadRequest),
-			JoinOutcome.InvalidExpiry => Problem(title: "Invalid expiry", detail: "The number of days is out of range.", statusCode: StatusCodes.Status400BadRequest),
 			JoinOutcome.RoleNotAllowed => Problem(title: "Unknown role", detail: "The role is not one this company can use.", statusCode: StatusCodes.Status400BadRequest),
 			JoinOutcome.GroupNotAllowed => Problem(title: "Unknown group", detail: "The group is not one of this company's.", statusCode: StatusCodes.Status400BadRequest),
 			JoinOutcome.AlreadyMember => Problem(title: "Already a member", detail: "A user with this email address is already a member of the company.", statusCode: StatusCodes.Status409Conflict),

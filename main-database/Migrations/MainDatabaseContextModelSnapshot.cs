@@ -487,11 +487,7 @@ namespace main_database.Migrations
                     b.Property<bool?>("IsAutoAppRegistrationAllowed")
                         .HasColumnType("boolean");
 
-                    b.Property<bool?>("IsPersonal")
-                        .HasColumnType("boolean");
-
                     b.Property<string>("JoinCode")
-                        .IsRequired()
                         .HasColumnType("text");
 
                     b.Property<string>("JoinQrCodeImageName")
@@ -514,6 +510,9 @@ namespace main_database.Migrations
                         .HasColumnType("integer");
 
                     b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<short>("TypeId")
                         .HasColumnType("smallint");
 
                     b.Property<int?>("UserId")
@@ -555,6 +554,26 @@ namespace main_database.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("user_join_invitation_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Companies.UserJoinInvitationType", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("user_join_invitation_type", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Companies.UserJoinRequest", b =>

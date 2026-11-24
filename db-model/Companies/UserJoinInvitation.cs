@@ -9,14 +9,16 @@ namespace db_model.Companies
         public int Id { get; set; }
         public int CompanyId { get; set; }
         public int CreatedByUserId { get; set; }
-        public string JoinCode { get; set; }
-        public string JoinQrCodeImageName { get; set; }
+        /// <summary>The code in plain text (XXXX-XXXX). Null for a User invitation (Type 2): it uses the company's code.</summary>
+        public string? JoinCode { get; set; }
+        public string JoinQrCodeImageName { get; set; } = "";
 
 
         public int? PermissionRoleId { get; set; }
         public int? GroupId { get; set; }
 
-        public bool? IsPersonal { get; set; }
+        /// <summary>A UserJoinInvitationType id: 1 Company (the anonymous row), 2 User, 3 Personal.</summary>
+        public short TypeId { get; set; }
         public bool? IsAutoAppRegistrationAllowed { get; set; }
         public bool? DoesNotRequireAdminApproval { get; set; }
 

@@ -14,14 +14,14 @@ namespace api_server.Controllers.Join
 		/// </summary>
 		public string? PortalBaseUrl { get; set; }
 
-		/// <summary>How long a personal invitation lasts when the request does not say.</summary>
+		/// <summary>How long an invitation to one person lasts, from when it is sent or renewed.</summary>
 		public int DefaultInviteDays { get; set; } = 7;
 
-		/// <summary>The longest an invitation may last.</summary>
-		public int MaxInviteDays { get; set; } = 60;
-
-		/// <summary>How long the company join code lasts before the page makes a new one.</summary>
-		public int CompanyCodeDays { get; set; } = 7;
+		/// <summary>
+		/// The name of the role a new company join code gives (a system role, or one of the company's). Only used when the code is first made;
+		/// after that the admin's choice is kept. When no such role exists the company's default role is used.
+		/// </summary>
+		public string CompanyCodeRole { get; set; } = "Read-Only";
 
 		/// <summary>Wrong codes one user may enter within <see cref="FailureWindowMinutes"/> before they are locked out for <see cref="LockoutMinutes"/>.</summary>
 		public int MaxFailedAttempts { get; set; } = 5;
@@ -30,24 +30,12 @@ namespace api_server.Controllers.Join
 	}
 
 	/// <summary>
-	/// Makes and checks join codes. A code is 8 symbols from an alphabet without look-alikes, written XXXX-XXXX. The database keeps only
-	/// <see cref="Hash"/> of it (HMAC-SHA256 with a key derived from the server secret, over the code without dashes and in upper case),
-	/// so a copy of the table does not give the codes. The plain code exists in the email and in the answer to the request that made it.
+	/// Makes and reads join codes. A code is 8 symbols from an alphabet without look-alikes, written XXXX-XXXX. It is stored as written
+	/// (UserJoinInvitation.JoinCode), so <see cref="Format"/> turns what a person typed into the stored shape.
 	/// </summary>
 	public sealed class JoinCodes
 	{
 		private const string Alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-		private readonly byte[] mKey;
-
-		public JoinCodes(IConfiguration configuration)
-		{
-			var secret = configuration["Join:CodeKey"];
-			if (string.IsNullOrWhiteSpace(secret)) secret = configuration["Jwt:SigningKey"];
-			if (string.IsNullOrWhiteSpace(secret)) throw new InvalidOperationException("Join codes need 'Join:CodeKey' or 'Jwt:SigningKey' to be configured.");
-			// Not the signing key itself: a leak of one use must not be a leak of the other.
-			mKey = SHA256.HashData(Encoding.UTF8.GetBytes("join-code-key:" + secret));
-		}
 
 		public string Generate()
 		{
@@ -66,7 +54,12 @@ namespace api_server.Controllers.Join
 			return sb.Length == 8 ? sb.ToString() : null;
 		}
 
-		public string Hash(string normalizedCode) => Convert.ToHexStringLower(HMACSHA256.HashData(mKey, Encoding.UTF8.GetBytes(normalizedCode)));
+		/// <summary>The code as stored: XXXX-XXXX. Null when the typed text cannot be a code.</summary>
+		public static string? Format(string? typed)
+		{
+			var normalized = Normalize(typed);
+			return normalized == null ? null : normalized[..4] + "-" + normalized[4..];
+		}
 	}
 
 	/// <summary>

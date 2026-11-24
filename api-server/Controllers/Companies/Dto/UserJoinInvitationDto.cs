@@ -11,12 +11,12 @@ namespace api_server.Companies
 			Id = model.Id;
 			CompanyId = model.CompanyId;
 			CreatedByUserId = model.CreatedByUserId;
-			// Only a hash is stored and it is not for the client; the code itself is shown once, when it is made.
-				JoinCode = "";
+			// The context list does not carry codes; the Invites & Join tab gets the company code from its own endpoint.
+			JoinCode = null;
 			JoinQrCodeImageName = model.JoinQrCodeImageName;
 			PermissionRoleId = model.PermissionRoleId;
 			GroupId = model.GroupId;
-			IsPersonal = model.IsPersonal;
+			TypeId = model.TypeId;
 			IsAutoAppRegistrationAllowed = model.IsAutoAppRegistrationAllowed;
 			DoesNotRequireAdminApproval = model.DoesNotRequireAdminApproval;
 			UserId = model.UserId;
@@ -31,13 +31,13 @@ namespace api_server.Companies
 		public int Id { get; set; }
 		public int CompanyId { get; set; }
 		public int CreatedByUserId { get; set; }
-		public string JoinCode { get; set; } = default!;
+		public string? JoinCode { get; set; }
 		public string JoinQrCodeImageName { get; set; } = default!;
 
 		public int? PermissionRoleId { get; set; }
 		public int? GroupId { get; set; }
 
-		public bool? IsPersonal { get; set; }
+		public short TypeId { get; set; }
 		public bool? IsAutoAppRegistrationAllowed { get; set; }
 		public bool? DoesNotRequireAdminApproval { get; set; }
 

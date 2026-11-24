@@ -54,7 +54,14 @@ INSERT INTO user_join_invitation_status ("Id", "Name") VALUES
     (1, 'Active'),
     (2, 'Expired'),
     (3, 'Accepted'),
-    (4, 'Cancelled')
+    (4, 'Cancelled'),
+    (5, 'Disabled')
+ON CONFLICT ("Id") DO NOTHING;
+
+INSERT INTO user_join_invitation_type ("Id", "Name") VALUES
+    (1, 'Company'),
+    (2, 'User'),
+    (3, 'Personal')
 ON CONFLICT ("Id") DO NOTHING;
 
 INSERT INTO user_join_request_status ("Id", "Name") VALUES

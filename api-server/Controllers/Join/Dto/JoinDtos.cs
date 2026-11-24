@@ -16,9 +16,6 @@ namespace api_server.Controllers.Join.Dto
 
 		public int? GroupId { get; set; }
 
-		/// <summary>How many days the code works; left out means the configured default.</summary>
-		public int? ExpiresInDays { get; set; }
-
 		[MaxLength(1000)]
 		public string? Message { get; set; }
 
@@ -26,7 +23,7 @@ namespace api_server.Controllers.Join.Dto
 		public bool RequireAdminApproval { get; set; } = true;
 	}
 
-	/// <summary>One personal invitation of the company, without its code (only a hash of it is stored).</summary>
+	/// <summary>One invitation to a person (a User or Personal one; the company's own code is not in the list).</summary>
 	public class JoinInvitationRowDto
 	{
 		public int Id { get; set; }
@@ -36,6 +33,8 @@ namespace api_server.Controllers.Join.Dto
 		public int? PermissionRoleId { get; set; }
 		public int? GroupId { get; set; }
 		public bool RequireAdminApproval { get; set; }
+		/// <summary>A UserJoinInvitationType id: 2 User, 3 Personal.</summary>
+		public short TypeId { get; set; }
 		/// <summary>A UserJoinInvitationStatus id: 1 Active, 2 Expired, 3 Accepted, 4 Cancelled. An Active one past its expiry is <see cref="IsExpired"/>.</summary>
 		public short StatusId { get; set; }
 		public bool IsExpired { get; set; }
@@ -50,22 +49,38 @@ namespace api_server.Controllers.Join.Dto
 	{
 		public JoinInvitationRowDto Invitation { get; set; } = default!;
 
-		/// <summary>The new code in plain text. It is shown once here and is in the email; the server keeps only a hash.</summary>
+		/// <summary>The code the person has to enter (the company's code for a User invitation). Shown to the admin so they can pass it on when the email did not go out.</summary>
 		public string JoinCode { get; set; } = default!;
 
 		/// <summary>"Sent" (queued for delivery), "NoTemplate" (no join-invitation template yet), "NotAvailable" (email transport is off) or "Failed".</summary>
 		public string EmailState { get; set; } = default!;
 	}
 
-	/// <summary>The company's current join code: one code for one person, made when the page opens.</summary>
+	/// <summary>The company's join code: the one anonymous row, which stays until an admin regenerates it.</summary>
 	public class CompanyJoinCodeDto
 	{
 		public int Id { get; set; }
 		public string JoinCode { get; set; } = default!;
-		public DateTime ExpirationDate { get; set; }
+		/// <summary>False when an admin switched joining with the code off ("Allow people to request access with a code" is unticked).</summary>
+		public bool Enabled { get; set; }
 		public int? PermissionRoleId { get; set; }
 		public int? GroupId { get; set; }
 		public bool RequireAdminApproval { get; set; }
+		/// <summary>How many invitations to people are open and would stop working if the code was regenerated (their email has the old code).</summary>
+		public int OpenInvitations { get; set; }
+	}
+
+	/// <summary>Regenerates the company code and sets what people who join with it get. All three replace the current values.</summary>
+	public class RegenerateCompanyJoinCodeDto
+	{
+		public int? PermissionRoleId { get; set; }
+		public int? GroupId { get; set; }
+		public bool RequireAdminApproval { get; set; } = true;
+	}
+
+	public class SetCompanyJoinCodeEnabledDto
+	{
+		public bool Enabled { get; set; }
 	}
 
 	/// <summary>What people who join with the company code get. All three replace the current values.</summary>
@@ -86,7 +101,7 @@ namespace api_server.Controllers.Join.Dto
 		/// <summary>The note of the invitation that was used, when it had one.</summary>
 		public string? Message { get; set; }
 		public int InvitationId { get; set; }
-		/// <summary>True when the person came with the company code, false when with a personal invitation.</summary>
+		/// <summary>True when the person came with the company link, false when with an invitation to them.</summary>
 		public bool ViaCompanyCode { get; set; }
 		/// <summary>A UserJoinRequestStatus id: 1 waiting for an admin, 2 let in automatically, 3 approved, 4 denied, 5 cancelled.</summary>
 		public short StatusId { get; set; }
@@ -99,19 +114,21 @@ namespace api_server.Controllers.Join.Dto
 	{
 		[Required, MaxLength(32)]
 		public string Code { get; set; } = default!;
+
+		/// <summary>True for the company link (/join?company=1&amp;code=...): the code alone is enough and no invitation is needed. False: the person must have an open invitation to their email address.</summary>
+		public bool CompanyLink { get; set; }
 	}
 
 	/// <summary>What the accept page shows about an invitation.</summary>
 	public class JoinInfoDto
 	{
-		/// <summary>Set when the invitation is a personal one (the page was opened from the email link); null for the company code.</summary>
-		public int? InvitationId { get; set; }
 		public string CompanyName { get; set; } = default!;
 		public string? InviterName { get; set; }
 		public string? InviteeName { get; set; }
 		public string? Message { get; set; }
 		public bool RequiresApproval { get; set; }
-		public DateTime ExpirationDate { get; set; }
+		/// <summary>When the invitation to the person ends; null for the company link, which does not expire.</summary>
+		public DateTime? ExpirationDate { get; set; }
 	}
 
 	public class JoinAcceptedDto
