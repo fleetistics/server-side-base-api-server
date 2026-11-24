@@ -11,7 +11,8 @@ namespace api_server.Companies
 			Id = model.Id;
 			CompanyId = model.CompanyId;
 			CreatedByUserId = model.CreatedByUserId;
-			JoinCode = model.JoinCode;
+			// Only a hash is stored and it is not for the client; the code itself is shown once, when it is made.
+				JoinCode = "";
 			JoinQrCodeImageName = model.JoinQrCodeImageName;
 			PermissionRoleId = model.PermissionRoleId;
 			GroupId = model.GroupId;
