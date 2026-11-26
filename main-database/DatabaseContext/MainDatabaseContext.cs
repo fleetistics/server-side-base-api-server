@@ -33,6 +33,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			createTeamModel(modelBuilder);
 			createMessageModel(modelBuilder);
 			createCompaniesModel(modelBuilder);
+			createContactsModel(modelBuilder);
 			createAuthModel(modelBuilder);
 			createAppStructureModel(modelBuilder);
 		}

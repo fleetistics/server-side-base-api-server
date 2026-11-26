@@ -392,7 +392,7 @@ namespace api_server.Controllers.Join.Services
 		private async Task<(bool AlreadyMember, int? UserId)> FindUserByEmailAsync(int companyId, string email, CancellationToken cancellationToken)
 		{
 			var lower = email.ToLower();
-			var ids = await mRepository.GetQueryable<User>(u => u.Email != null && u.Email.ToLower() == lower).AsNoTracking().Select(u => u.Id).ToListAsync(cancellationToken);
+			var ids = await mRepository.GetQueryable<User>(u => u.UserSourceId != UserSource.Contact && u.Email != null && u.Email.ToLower() == lower).AsNoTracking().Select(u => u.Id).ToListAsync(cancellationToken);
 			if (ids.Count == 0) return (false, null);
 			var statuses = await mRepository.GetQueryable<User2Company>(m => m.CompanyId == companyId && ids.Contains(m.UserId)).AsNoTracking().Select(m => m.StatusId).ToListAsync(cancellationToken);
 			return (statuses.Any(JoinMembership.IsMember), ids.Count == 1 ? ids[0] : null);

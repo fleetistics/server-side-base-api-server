@@ -20,6 +20,7 @@ INSERT INTO user_source ("Id", "Name") VALUES
     (3,  'Registration (App)'),
     (4,  'MF Migrate'),
     (5,  'Manual'),
+    (6,  'Contact'),
     (13, 'Test User')
 ON CONFLICT ("Id") DO NOTHING;
 
@@ -70,6 +71,39 @@ INSERT INTO user_join_request_status ("Id", "Name") VALUES
     (3, 'Accepted'),
     (4, 'Rejected'),
     (5, 'Cancelled')
+ON CONFLICT ("Id") DO NOTHING;
+
+-- ===== Contacts (CRM) =====
+INSERT INTO company_type ("Id", "Name") VALUES
+    (1, 'Customer'),
+    (2, 'Vendor'),
+    (3, 'Partner'),
+    (4, 'Affiliate'),
+    (5, 'Internal')
+ON CONFLICT ("Id") DO NOTHING;
+
+INSERT INTO contact_type ("Id", "Name") VALUES
+    (1, 'Contact'),
+    (2, 'Vendor'),
+    (3, 'Partner')
+ON CONFLICT ("Id") DO NOTHING;
+
+INSERT INTO lead_source ("Id", "Name") VALUES
+    (1, 'Website'),
+    (2, 'Referral'),
+    (3, 'Trade Show'),
+    (4, 'Cold Call'),
+    (5, 'Partner'),
+    (6, 'Advertising'),
+    (7, 'Other')
+ON CONFLICT ("Id") DO NOTHING;
+
+INSERT INTO payment_term ("Id", "Name") VALUES
+    (1, 'Due on Receipt'),
+    (2, 'Net 15'),
+    (3, 'Net 30'),
+    (4, 'Net 45'),
+    (5, 'Net 60')
 ON CONFLICT ("Id") DO NOTHING;
 
 -- ===== Teams =====

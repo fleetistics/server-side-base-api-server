@@ -193,7 +193,7 @@ namespace api_server.Controllers.Join.Services
 			if (!string.IsNullOrWhiteSpace(email))
 			{
 				var lower = email.Trim().ToLower();
-				ids.AddRange(await mRepository.GetQueryable<User>(u => u.Email != null && u.Email.ToLower() == lower).AsNoTracking().Select(u => u.Id).ToListAsync(cancellationToken));
+				ids.AddRange(await mRepository.GetQueryable<User>(u => u.UserSourceId != UserSource.Contact && u.Email != null && u.Email.ToLower() == lower).AsNoTracking().Select(u => u.Id).ToListAsync(cancellationToken));
 			}
 			var statuses = await mRepository.GetQueryable<User2Company>(m => m.CompanyId == companyId && ids.Contains(m.UserId)).AsNoTracking().Select(m => m.StatusId).ToListAsync(cancellationToken);
 			return statuses.Any(JoinMembership.IsMember);
