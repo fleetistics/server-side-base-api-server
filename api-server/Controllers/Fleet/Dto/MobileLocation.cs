@@ -3,7 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace api_server.Controllers.MapData.Dto
+namespace api_server.Controllers.Fleet.Dto
 {
 	// One location item of a mobile location report, as produced by the device's background-geolocation SDK.
 	// Mirrors the SDK's `Location` type and is bound by the standard request parser (snake_case names are explicit,

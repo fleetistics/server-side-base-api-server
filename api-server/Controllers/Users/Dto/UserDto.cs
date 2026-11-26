@@ -21,6 +21,7 @@ namespace api_server.Users
 			IsMfaEnabled = user.IsMfaEnabled;
 			IsEmailVerified = user.IsEmailVerified;
 			IsPhoneVerified = user.IsPhoneVerified;
+            IconKeyOnMap = user.IconKeyOnMap;
 			if (user.AvatarImage != null)
 			{
                 AvatarImage = new UploadedMediaDto(user.AvatarImage);
@@ -37,7 +38,8 @@ namespace api_server.Users
 		public string UserName { get; set; } = default!;
 		//public short StatusId { get; set; }
 		public string? FullName { get; set; } = default!;
-		public string? Phone { get; set; }
+        public short? IconKeyOnMap { get; set; }
+        public string? Phone { get; set; }
 		public string? Email { get; set; }
 		public bool? IsMfaEnabled { get; set; }
 		public bool? IsEmailVerified { get; set; }

@@ -1,6 +1,5 @@
 using api_server.BusinessLogic.Dto;
-using api_server.Controllers.MapData.Dto;
-using api_server.Controllers.MapData.Services;
+using api_server.Controllers.Fleet.Services;
 using api_server.Medias;
 using api_server.Controllers.Messages;
 using api_server.Controllers.Teams.Dto;
@@ -15,6 +14,7 @@ using DotLiquid.Tags;
 using exs.Commons.Utils;
 using exs.Database.Commons.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using api_server.Controllers.MapData.Dto;
 
 namespace api_server.Controllers.Teams.Services
 {
@@ -56,7 +56,7 @@ namespace api_server.Controllers.Teams.Services
 
 		/// <summary>
 		/// Only what changed since <paramref name="latestUpdateDate"/> (unix milliseconds, the
-		/// <see cref="TeamContextDelta.LastUpdate"/> of the previous call), plus
+		/// <see cref="CompanyContextDelta.LastUpdate"/> of the previous call), plus
 		/// removal markers. Same caller-membership/exclusion rules as <see cref="GetTeamContextAsync"/>.
 		/// </summary>
 		Task<TeamContextUpdateResult> GetTeamContextDeltaAsync(int currentUserId, int teamId, long latestUpdateDate, int[]? notTeamUserIds, int[]? requestedUserIds, CancellationToken cancellationToken);
@@ -125,7 +125,7 @@ namespace api_server.Controllers.Teams.Services
 			}
 
 			var messages = await mRepository.GetQueryable<UserMessage>().Include(u => u.UserMessage2Users.Where(u => u.UserId == currentUserId))
-                .Where(e => (e.UserId == currentUserId || e.ToUserId == currentUserId || e.ToUserId == null) && (e.TeamId == teamId ))
+                //.Where(e => (e.UserId == currentUserId || e.ToUserId == currentUserId || e.ToUserId == null) && (e.TeamId == teamId ))
 				.AsNoTracking().ToListAsync(cancellationToken);
 
 			if(messages != null)
@@ -533,21 +533,21 @@ namespace api_server.Controllers.Teams.Services
 		/// <paramref name="updatedUserIds"/> changed after <paramref name="since"/>. A phone is a mobile gps_device whose
 		/// UserId says whose it is; its motion activity and battery sit in the state data JSON.
 		/// </summary>
-		private async Task<List<MobileGpsDeviceMapStateDto>> loadPhoneMapStatesAsync(IEnumerable<int> loadUserIds, IEnumerable<int> updatedUserIds, DateTime since, CancellationToken cancellationToken)
-		{
-			var load = loadUserIds.ToList();
-			var updated = updatedUserIds.ToList();
-			var rows = await (
-				from s in mRepository.GetQueryable<GpsDeviceMapState>()
-				join d in mRepository.GetQueryable<GpsDevice>(x => x.ProviderId == GpsDeviceProvider.Mobile && x.UserId != null) on s.GpsDeviceId equals d.Id
-				where load.Contains(d.UserId!.Value) //|| (updated.Contains(d.UserId!.Value) && s.LatestOnMapUpdate > since)
-				join sd in mRepository.GetQueryable<GpsDeviceStateData>() on s.GpsDeviceId equals sd.GpsDeviceId into sds
-				from sd in sds.DefaultIfEmpty()
-				select new { State = s, UserId = d.UserId!.Value, Data = sd != null ? sd.Data : null })
-				.AsNoTracking()
-				.ToListAsync(cancellationToken);
-			return rows.Select(r => new MobileGpsDeviceMapStateDto(r.State, r.UserId, r.Data)).ToList();
-		}
+		//private async Task<List<GpsDeviceMapStateDto>> loadPhoneMapStatesAsync(IEnumerable<int> loadUserIds, IEnumerable<int> updatedUserIds, DateTime since, CancellationToken cancellationToken)
+		//{
+		//	var load = loadUserIds.ToList();
+		//	var updated = updatedUserIds.ToList();
+		//	var rows = await (
+		//		from s in mRepository.GetQueryable<GpsDeviceMapState>()
+		//		join d in mRepository.GetQueryable<GpsDevice>(x => x.ProviderId == GpsDeviceProvider.Mobile && x.UserId != null) on s.GpsDeviceId equals d.Id
+		//		where load.Contains(d.UserId!.Value) //|| (updated.Contains(d.UserId!.Value) && s.LatestOnMapUpdate > since)
+		//		join sd in mRepository.GetQueryable<GpsDeviceStateData>() on s.GpsDeviceId equals sd.GpsDeviceId into sds
+		//		from sd in sds.DefaultIfEmpty()
+		//		select new { State = s, UserId = d.UserId!.Value, Data = sd != null ? sd.Data : null })
+		//		.AsNoTracking()
+		//		.ToListAsync(cancellationToken);
+		//	return rows.Select(r => new GpsDeviceMapStateDto(r.State, r.UserId, r.Data)).ToList();
+		//}
 
 		private readonly IRepository mRepository;
 		private readonly MediaUrlResolver mMediaUrls;

@@ -20,5 +20,13 @@ namespace api_server.Controllers.Base
 
 		// Location-report tokens are only issued for sessions bound to a mobile GPS device, so the claim is required.
 		protected int MobileGpsDeviceId => int.Parse(User.FindFirst(TokenService.MobileGpsDeviceIdClaim)?.Value ?? throw new Exception("MobileGpsDeviceId claim not found"));
-	}
+        protected int? CompanyId
+        {
+            get
+            {
+                var value = User.FindFirst(TokenService.CompanyIdClaim)?.Value;
+                return value is null ? null : int.Parse(value);
+            }
+        }
+    }
 }

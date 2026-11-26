@@ -86,7 +86,7 @@ namespace api_server.Auth
             var LocationReportKey = tokenService.CreateRotationKey(session.SessionKey, locationCounter, session.Token.KeySalt, RotationKeyPurpose.LocationReport);
             return new RefreshAppLocationTokenResponseData
             {
-                access_token = tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), mobileGpsDeviceId.ToString(), kind: AccessTokenKind.LocationReport),
+                access_token = tokenService.CreateAccessToken(session.UserId.ToString(), session.Id.ToString(), mobileGpsDeviceId.ToString(), companyId: session.CompanyId?.ToString(), kind: AccessTokenKind.LocationReport),
                 refresh_token = LocationReportKey.CompositeCookieKey,
                 expires_in = tokenService.GetAccesstokenExpirationInSeconds()
             };

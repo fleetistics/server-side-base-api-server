@@ -7,7 +7,7 @@ namespace db_model.Messages
         public int UserId { get; set; }
         public DateTime Date { get; set; }
         public int? ToUserId { get; set; }
-        public int? TeamId { get; set; }
+        public int? CompanyId { get; set; }
         public string Message { get; set; } = default!;
         public short StatusId { get; set; }
         public DateTime LatestUpdate { get; set; }

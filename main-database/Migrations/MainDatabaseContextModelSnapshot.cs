@@ -248,6 +248,9 @@ namespace main_database.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<short>("KindId")
+                        .HasColumnType("smallint");
+
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
@@ -327,6 +330,9 @@ namespace main_database.Migrations
 
                     b.Property<int>("UserId")
                         .HasColumnType("integer");
+
+                    b.Property<short?>("IconKey")
+                        .HasColumnType("smallint");
 
                     b.Property<short>("JoinTypeId")
                         .HasColumnType("smallint");
@@ -1125,41 +1131,6 @@ namespace main_database.Migrations
                     b.ToTable("mobile_device_motion_activity", (string)null);
                 });
 
-            modelBuilder.Entity("db_model.Map.MobileGpsDeviceMapState", b =>
-                {
-                    b.Property<int>("MobileGpsDeviceId")
-                        .HasColumnType("integer");
-
-                    b.Property<float?>("BatteryLevel")
-                        .HasColumnType("real");
-
-                    b.Property<short?>("Dir")
-                        .HasColumnType("smallint");
-
-                    b.Property<DateTime>("LatestOnMapUpdate")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Point>("Location")
-                        .IsRequired()
-                        .HasColumnType("geometry");
-
-                    b.Property<short?>("MotionActivity")
-                        .HasColumnType("smallint");
-
-                    b.Property<float?>("Speed")
-                        .HasColumnType("real");
-
-                    b.Property<int?>("TeamId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("integer");
-
-                    b.HasKey("MobileGpsDeviceId");
-
-                    b.ToTable("mobile_gps_device_map_state", (string)null);
-                });
-
             modelBuilder.Entity("db_model.Map.MobileGpsDeviceTrackPoint", b =>
                 {
                     b.Property<int>("Id")
@@ -1282,6 +1253,9 @@ namespace main_database.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("Date")
                         .HasColumnType("timestamp with time zone");
 
@@ -1297,9 +1271,6 @@ namespace main_database.Migrations
 
                     b.Property<short>("StatusId")
                         .HasColumnType("smallint");
-
-                    b.Property<int?>("TeamId")
-                        .HasColumnType("integer");
 
                     b.Property<int?>("ToUserId")
                         .HasColumnType("integer");
@@ -1378,6 +1349,166 @@ namespace main_database.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("user_message_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Missions.Mission", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("ClosedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("CreatorUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("JoinKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("JoinQrCode")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("CreatorUserId", "StatusId");
+
+                    b.ToTable("mission", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Missions.MissionDetails", b =>
+                {
+                    b.Property<int>("MissionId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("IncidentName")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.HasKey("MissionId");
+
+                    b.ToTable("mission_details", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Missions.MissionPrimaryTargetUser", b =>
+                {
+                    b.Property<int>("MissionId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short>("StatusId")
+                        .HasColumnType("smallint");
+
+                    b.Property<int?>("TargetUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("MissionId");
+
+                    b.ToTable("mission_primary_target_user", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Missions.MissionPrimaryTargetUserStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("mission_primary_target_user_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Missions.MissionStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("mission_status", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Missions.MissionUploadedMedia", b =>
+                {
+                    b.Property<int>("MissionId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UploadedMediaId")
+                        .HasColumnType("integer");
+
+                    b.Property<short?>("GroupKey")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("MissionId", "UploadedMediaId");
+
+                    b.HasIndex("UploadedMediaId");
+
+                    b.ToTable("mission_uploaded_media", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Team.Team", b =>
@@ -1777,6 +1908,9 @@ namespace main_database.Migrations
                     b.Property<int?>("GovIDImageId")
                         .HasColumnType("integer");
 
+                    b.Property<short?>("IconKeyOnMap")
+                        .HasColumnType("smallint");
+
                     b.Property<bool?>("IsEmailVerified")
                         .HasColumnType("boolean");
 
@@ -1828,11 +1962,8 @@ namespace main_database.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<float?>("CompleteLatitude")
-                        .HasColumnType("real");
-
-                    b.Property<float?>("CompleteLongitude")
-                        .HasColumnType("real");
+                    b.Property<int?>("CompanyId")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("CompletedDate")
                         .HasColumnType("timestamp with time zone");
@@ -1840,20 +1971,17 @@ namespace main_database.Migrations
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int?>("GpsDeviceId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("timestamp with time zone")
                         .HasDefaultValueSql("now()");
 
-                    b.Property<float?>("Latitude")
-                        .HasColumnType("real");
-
-                    b.Property<float?>("Longitude")
-                        .HasColumnType("real");
-
-                    b.Property<int?>("MobileGpsDeviceId")
-                        .HasColumnType("integer");
+                    b.Property<Point>("Location")
+                        .HasColumnType("geometry");
 
                     b.Property<short>("StatusId")
                         .HasColumnType("smallint");
@@ -2664,6 +2792,51 @@ namespace main_database.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("db_model.Missions.Mission", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("db_model.Missions.MissionDetails", b =>
+                {
+                    b.HasOne("db_model.Missions.Mission", null)
+                        .WithOne()
+                        .HasForeignKey("db_model.Missions.MissionDetails", "MissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.Missions.MissionPrimaryTargetUser", b =>
+                {
+                    b.HasOne("db_model.Missions.Mission", null)
+                        .WithOne()
+                        .HasForeignKey("db_model.Missions.MissionPrimaryTargetUser", "MissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.Missions.MissionUploadedMedia", b =>
+                {
+                    b.HasOne("db_model.Missions.MissionDetails", null)
+                        .WithMany("Medias")
+                        .HasForeignKey("MissionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.Media.UploadedMedia", "Media")
+                        .WithMany()
+                        .HasForeignKey("UploadedMediaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Media");
+                });
+
             modelBuilder.Entity("db_model.Team.TeamMemberUser", b =>
                 {
                     b.HasOne("db_model.Team.Team", "Team")
@@ -2779,6 +2952,11 @@ namespace main_database.Migrations
             modelBuilder.Entity("db_model.Messages.UserMessage", b =>
                 {
                     b.Navigation("UserMessage2Users");
+                });
+
+            modelBuilder.Entity("db_model.Missions.MissionDetails", b =>
+                {
+                    b.Navigation("Medias");
                 });
 
             modelBuilder.Entity("db_model.Team.Team", b =>

@@ -25,6 +25,8 @@ namespace db_model.UserManagement
         public bool? IsPhoneVerified { get; set; }
 
 
+        public short? IconKeyOnMap { get; set; }
+
         public string? Phone { get; set; }
         public string? Email { get; set; }
         public int? AvatarImageId { get; set; }

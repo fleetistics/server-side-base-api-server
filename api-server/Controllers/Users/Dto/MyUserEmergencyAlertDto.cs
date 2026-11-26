@@ -9,13 +9,13 @@ namespace api_server.Users
 		public MyUserEmergencyAlertDto(UserEmergencyAlert model)
 		{
 			CreatedDate = model.CreatedDate;
-			MobileGpsDeviceId = model.MobileGpsDeviceId;
-			Latitude = model.Latitude;
-			Longitude = model.Longitude;
+            GpsDeviceId = model.GpsDeviceId;
+			Latitude = model.Location.X;
+			Longitude = model.Location.Y;
 		}
 
 		public DateTime CreatedDate { get; set; }
-		public int? MobileGpsDeviceId { get; set; }
+		public int? GpsDeviceId { get; set; }
 		public double? Latitude { get; set; }
 		public double? Longitude { get; set; }
 	}

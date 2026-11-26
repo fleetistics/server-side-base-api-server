@@ -1,4 +1,4 @@
-﻿namespace api_server.Controllers.MapData.Services
+﻿namespace api_server.Controllers.Fleet.Services
 {
     public class MapDataUpdateprocessor
     {

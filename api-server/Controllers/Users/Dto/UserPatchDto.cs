@@ -26,7 +26,8 @@ namespace api_server.Users
 		public Optional<string?> FullName { get; set; }
 		public Optional<string?> Phone { get; set; }
 		public Optional<string?> Email { get; set; }
-		public Optional<bool> IsMfaEnabled { get; set; }
+        public Optional<short?> IconKeyOnMap { get; set; }
+        public Optional<bool> IsMfaEnabled { get; set; }
 
 		// Optional<T> bypasses the implicit NRT-required model validation UserDto gets
 		// for free (the wrapper is always structurally "present"), so the one rule that

@@ -1,12 +1,12 @@
 using api_server.Controllers.Base;
-using api_server.Controllers.MapData.Dto;
-using api_server.Controllers.MapData.Services;
+using api_server.Controllers.Fleet.Dto;
+using api_server.Controllers.Fleet.Services;
 using db_model.UserManagement;
 using exs.Database.Commons.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace api_server.Controllers.MapData
+namespace api_server.Controllers.Fleet
 {
 	public class MobileGpsController : LocationAuthAPIController
     {
@@ -27,7 +27,7 @@ namespace api_server.Controllers.MapData
 			//}
 
 			// Invalid JSON, a non-array body or an item of the wrong shape never gets here: the framework answers 400.
-			await mMapTrackService.ParseAndUpdateDeviceLocationsAsync(UserId, MobileGpsDeviceId, requestData, cancellationToken);
+			await mMapTrackService.ParseAndUpdateDeviceLocationsAsync(UserId, MobileGpsDeviceId, CompanyId, requestData, cancellationToken);
 			return Ok();
 		}
 

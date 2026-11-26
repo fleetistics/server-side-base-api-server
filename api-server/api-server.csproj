@@ -8,6 +8,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Controllers\CompanyContext\Services\CompanyContextService.cs" />
+    <Compile Remove="Controllers\Teams\Services\TeamContextService.cs" />
+    <Compile Remove="Controllers\Teams\TeamContextController.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Asp.Versioning.Mvc" Version="10.2.1" />
     <PackageReference Include="Isopoh.Cryptography.Argon2" Version="2.0.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
@@ -37,6 +43,14 @@
     <Folder Include="Controllers\AppStructure\Dto\" />
     <Folder Include="Controllers\AppStructure\Services\" />
     <Folder Include="Controllers\Companies\Services\" />
+    <Folder Include="Controllers\Missions\Services\" />
+    <Folder Include="Controllers\NewFolder\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="Controllers\CompanyContext\Services\CompanyContextService.cs" />
+    <None Include="Controllers\Teams\Services\TeamContextService.cs" />
+    <None Include="Controllers\Teams\TeamContextController.cs" />
   </ItemGroup>
 
   <ItemGroup>

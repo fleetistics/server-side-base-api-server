@@ -1,4 +1,4 @@
-﻿using api_server.Controllers.MapData.Dto;
+﻿using api_server.Controllers.Fleet.Dto;
 using db_model.Gps;
 using db_model.Map;
 using exs.Database.Commons.Interfaces;
@@ -9,7 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
 
-namespace api_server.Controllers.MapData.Services
+namespace api_server.Controllers.Fleet.Services
 {
 
     /// <summary>
@@ -55,7 +55,7 @@ namespace api_server.Controllers.MapData.Services
         /// Queues a parsed location report for the background worker, which turns it into track points and updates the
         /// device's map state (see <see cref="processUpdateTrackPoints"/>).
         /// </summary>
-        public async Task ParseAndUpdateDeviceLocationsAsync(int userId, int mobileGpsDeviceId, List<MobileLocation?> locations, CancellationToken cancellationToken)
+        public async Task ParseAndUpdateDeviceLocationsAsync(int userId, int mobileGpsDeviceId, int? companyId, List<MobileLocation?> locations, CancellationToken cancellationToken)
         {
             if (locations.Count == 0) return;
 
@@ -64,7 +64,7 @@ namespace api_server.Controllers.MapData.Services
                 Type = CommandType.UpdateTrackPoints,
                 UserId = userId,
                 MobileGpsDeviceId = mobileGpsDeviceId,
-                CompanyId = null,
+                CompanyId = companyId,
                 ReceivedAt = DateTime.UtcNow,
                 TrackPoints = locations
             }, cancellationToken);

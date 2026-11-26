@@ -11,6 +11,8 @@ namespace db_model.Companies
         public int UserId { get; set; }
         public int PermissionRoleId { get; set; }
 
+        public short? IconKey { get; set; }
+
         public short StatusId { get; set; }
         public short JoinTypeId { get; set; }
         public DateTime JoinedDate { get; set; }

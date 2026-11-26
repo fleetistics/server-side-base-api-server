@@ -1,6 +1,6 @@
 using api_server.Auth;
 using api_server.Controllers.Log;
-using api_server.Controllers.MapData.Services;
+using api_server.Controllers.Fleet.Services;
 using api_server.Medias;
 using api_server.Controllers.Teams;
 using api_server.Controllers.Teams.Services;
@@ -42,11 +42,6 @@ namespace api_server.core
 				.AddScoped<AuthService>()
 				.AddScoped<ISecuritySettingsService, SecuritySettingsService>()
 				.AddScoped<api_server.Companies.ICompanyAdminService, api_server.Companies.CompanyAdminService>()
-				.Configure<api_server.Controllers.Join.JoinOptions>(configuration.GetSection("Join"))
-				.AddSingleton<api_server.Controllers.Join.JoinCodes>()
-				.AddSingleton<api_server.Controllers.Join.JoinAttemptThrottle>()
-				.AddScoped<api_server.Controllers.Join.Services.ICompanyJoinService, api_server.Controllers.Join.Services.CompanyJoinService>()
-				.AddScoped<api_server.Controllers.Join.Services.IJoinAcceptService, api_server.Controllers.Join.Services.JoinAcceptService>()
 				.AddScoped<IMediaStorage, MediaStorageService>()
 				.AddScoped<IMediaInboundProcessor, MediaInboundProcessor>()
 				.AddScoped<IUserService, UserService>()
@@ -58,7 +53,8 @@ namespace api_server.core
 				.AddScoped<api_server.Controllers.Roles.Services.IRoleMenuPermissionsService, api_server.Controllers.Roles.Services.RoleMenuPermissionsService>()
 				.AddScoped<api_server.Controllers.Roles.Services.IRoleAdminService, api_server.Controllers.Roles.Services.RoleAdminService>()
 				.AddScoped<ITeamService, TeamService>()
-				.AddScoped<ITeamContextService, TeamContextService>()
+				.AddScoped<api_server.Missions.IMissionService, api_server.Missions.MissionService>()
+				//.AddScoped<ITeamContextService, TeamContextService>()
 				.AddScoped<ITranslationService, TranslationService>()
 				.AddSingleton<MediaUrlResolver>()
 				.AddSingleton<MediaPreviewService>()

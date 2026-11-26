@@ -30,10 +30,10 @@ namespace api_server.Users
             entity = new UserEmergencyAlert
 			{
 				UserId = userId,
-				MobileGpsDeviceId = mobileGpsDeviceId,
+				GpsDeviceId = mobileGpsDeviceId,
 				CreatedDate = DateTime.UtcNow,
-				Latitude = (float?)body.Latitude,
-				Longitude = (float?)body.Longitude,
+				//Latitude = (float?)body.Latitude,
+				//Longitude = (float?)body.Longitude,
 				StatusId = UserEmergencyAlertStatus.Active
 			};
 			mRepository.Create(entity);
@@ -54,8 +54,8 @@ namespace api_server.Users
 			if (entity == null) return null;
 
 			entity.CompletedDate = DateTime.UtcNow;
-			entity.CompleteLatitude = (float?)body.CompleteLatitude;
-			entity.CompleteLongitude = (float?)body.CompleteLongitude;
+			//entity.CompleteLatitude = (float?)body.CompleteLatitude;
+			//entity.CompleteLongitude = (float?)body.CompleteLongitude;
 			entity.StatusId = UserEmergencyAlertStatus.ColosedByUser;
 
 			await mRepository.SaveAsync(cancellationToken);

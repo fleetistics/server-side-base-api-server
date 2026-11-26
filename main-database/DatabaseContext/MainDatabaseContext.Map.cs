@@ -19,12 +19,6 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 				entity.HasKey(e => new { e.Id });
 				entity.Property(e => e.Id).ValueGeneratedNever();
 			});
-			modelBuilder.Entity<MobileGpsDeviceMapState>(entity =>
-			{
-				entity.ToTable("mobile_gps_device_map_state");
-				entity.HasKey(e => new { e.MobileGpsDeviceId });
-				entity.Property(e => e.MobileGpsDeviceId).ValueGeneratedNever();
-			});
 			modelBuilder.Entity<MobileGpsDeviceTrackPoint>(entity =>
 			{
 				entity.ToTable("mobile_gps_device_track_point");

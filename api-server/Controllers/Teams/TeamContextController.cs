@@ -14,7 +14,7 @@ namespace api_server.Controllers.Teams
 		}
 
 		[HttpGet("/api/team/{teamId}/context")]
-		[ProducesResponseType(typeof(TeamContextDelta), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(CompanyContextDelta), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
 		[ProducesResponseType(StatusCodes.Status410Gone)]
 		public async Task<IActionResult> GetTeamContext(int teamId, CancellationToken cancellationToken)
@@ -24,7 +24,7 @@ namespace api_server.Controllers.Teams
 		}
 
 		[HttpGet("/api/team/{teamId}/context/delta")]
-		[ProducesResponseType(typeof(TeamContextDelta), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(CompanyContextDelta), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status204NoContent)]
 		[ProducesResponseType(StatusCodes.Status400BadRequest)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]

@@ -34,40 +34,6 @@ namespace api_server.Controllers.Teams
 			return Ok(team);
 		}
 
-		[HttpPost("/api/team")]
-		[ProducesResponseType(typeof(int), StatusCodes.Status201Created)]
-		[ProducesResponseType(StatusCodes.Status400BadRequest)]
-		public async Task<IActionResult> CreateTeam([FromBody] TeamCreatePatchDto body, CancellationToken cancellationToken)
-		{
-			// A new team needs a name; on PATCH an omitted name just means "unchanged", so this is
-			// enforced here rather than in TeamCreatePatchDto (shared by both). A blank name is
-			// rejected by TeamPatchDto.Validate.
-			if (body.Team?.TeamName is not { IsSet: true, Value: not null })
-			{
-				ModelState.AddModelError("Team.TeamName", "TeamName is required.");
-				return ValidationProblem(ModelState);
-			}
-
-			var teamId = await mTeamService.CreateTeamAsync(UserId, body, cancellationToken);
-			return CreatedAtAction(nameof(GetCreatingTeam), null, teamId);
-		}
-
-		[HttpPatch("/api/team/{teamId}")]
-		[ProducesResponseType(typeof(TeamCreateDto), StatusCodes.Status200OK)]
-		public async Task<IActionResult> PatchCreatingTeam(int teamId, [FromBody] TeamCreatePatchDto body, CancellationToken cancellationToken)
-		{
-			await mTeamService.PatchCreateTeamAsync(UserId, teamId, body, cancellationToken);
-			return Ok(await mTeamService.GetCreatingTeamByUserAsync(UserId, cancellationToken));
-		}
-
-		[HttpPost("/api/team/{teamId}/start")]
-		[ProducesResponseType(StatusCodes.Status204NoContent)]
-		public async Task<IActionResult> StartTeam(int teamId, CancellationToken cancellationToken)
-		{
-			await mTeamService.StartTeamAsync(UserId, teamId, cancellationToken);
-			return NoContent();
-		}
-
 		private readonly ITeamService mTeamService;
 	}
 }

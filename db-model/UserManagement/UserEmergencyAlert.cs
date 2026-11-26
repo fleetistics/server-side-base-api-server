@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using NetTopologySuite.Geometries;
 
 namespace db_model.UserManagement
 {
@@ -8,13 +6,11 @@ namespace db_model.UserManagement
     {
         public int Id { get; set; }
         public int UserId { get; set; }
-        public int? MobileGpsDeviceId { get; set; }
+        public int? CompanyId { get; set; }
+        public int? GpsDeviceId { get; set; }
         public DateTime CreatedDate { get; set; }
         public DateTime? CompletedDate { get; set; }
-        public float? Latitude { get; set; }
-        public float? Longitude { get; set; }
-        public float? CompleteLatitude { get; set; }
-        public float? CompleteLongitude { get; set; }
+        public Point? Location { get; set; } = default!;
         public DateTime LatestUpdate { get; set; }
         public short StatusId { get; set; }
     }
