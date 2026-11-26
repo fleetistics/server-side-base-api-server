@@ -134,7 +134,8 @@ namespace api_server.Controllers.Contacts.Services
 			}
 
 			var now = Now();
-			var company = new Company { Name = request.Name.Trim(), StatusId = request.StatusId ?? CompanyStatus.Active, LatestUpdate = now };
+			// KindId ContactsEntry marks it as somebody's contact, not a company that uses the portal.
+			var company = new Company { Name = request.Name.Trim(), KindId = CompanyKind.ContactsEntry, StatusId = request.StatusId ?? CompanyStatus.Active, LatestUpdate = now };
 			mRepository.Create(company);
 			await mRepository.SaveAsync(cancellationToken);
 
