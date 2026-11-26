@@ -64,10 +64,12 @@ namespace api_server.Controllers.Contacts.Services
 		{
 			var result = new ContactLookupsDto
 			{
-				CompanyTypes = (await mRepository.GetQueryable<CompanyType>(t => t.Id != CompanyType.Internal).AsNoTracking().OrderBy(t => t.Id).ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name }).ToList(),
-				ContactTypes = (await mRepository.GetQueryable<ContactType>().AsNoTracking().OrderBy(t => t.Id).ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name }).ToList(),
-				LeadSources = (await mRepository.GetQueryable<LeadSource>().AsNoTracking().OrderBy(t => t.Id).ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name }).ToList(),
-				PaymentTerms = (await mRepository.GetQueryable<PaymentTerm>().AsNoTracking().OrderBy(t => t.Id).ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name }).ToList(),
+				// Every list is sorted by name.
+				CompanyTypes = SortedByName((await mRepository.GetQueryable<CompanyType>(t => t.Id != CompanyType.Internal).AsNoTracking().ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name })),
+				ContactTypes = SortedByName((await mRepository.GetQueryable<ContactType>().AsNoTracking().ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name })),
+				LeadSources = SortedByName((await mRepository.GetQueryable<LeadSource>().AsNoTracking().ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name })),
+				PaymentTerms = SortedByName((await mRepository.GetQueryable<PaymentTerm>().AsNoTracking().ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name })),
+				CompanyStatuses = SortedByName((await mRepository.GetQueryable<CompanyStatus>(s => s.Id == CompanyStatus.Active || s.Id == CompanyStatus.Inactive).AsNoTracking().ToListAsync(cancellationToken)).Select(s => new LookupItemDto { Id = s.Id, Name = s.Name })),
 			};
 			var memberIds = await MemberIdsAsync(ownerCompanyId, cancellationToken);
 			result.AccountManagers = (await mRepository.GetQueryable<User>(u => memberIds.Contains(u.Id)).AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FullName, u.UserName }).ToListAsync(cancellationToken))
@@ -88,14 +90,25 @@ namespace api_server.Controllers.Contacts.Services
 				.GroupBy(l => l.CompanyId).ToDictionary(g => g.Key, g => g.First());
 
 			var primaryIds = infos.Values.Where(i => i.PrimaryContactUserId != null).Select(i => i.PrimaryContactUserId!.Value).ToList();
-			var primaries = await PeopleNamesAsync(primaryIds, cancellationToken);
 			var privateIds = links.Where(l => l.OwnerUserId != null).Select(l => l.ContactCompanyId).ToHashSet();
+
+			// A company without a primary contact shows its first visible (not archived) contact person, the oldest one, in its place.
+			var withoutPrimary = companies.Where(c => c.Id != ownerCompanyId && infos.GetValueOrDefault(c.Id)?.PrimaryContactUserId == null).Select(c => c.Id).ToList();
+			var firstContacts = new Dictionary<int, int>();
+			if (withoutPrimary.Count > 0)
+			{
+				var personIds = (await VisiblePersonLinksAsync(ownerCompanyId, userId, cancellationToken)).Where(l => !l.IsArchived).Select(l => l.ContactUserId).ToList();
+				var people = await mRepository.GetQueryable<User>(u => personIds.Contains(u.Id) && u.CompanyId != null && withoutPrimary.Contains(u.CompanyId.Value)).AsNoTracking().OrderBy(u => u.Id).Select(u => new { u.Id, u.CompanyId }).ToListAsync(cancellationToken);
+				foreach (var person in people) firstContacts.TryAdd(person.CompanyId!.Value, person.Id);
+			}
+			var primaries = await PeopleNamesAsync(primaryIds.Concat(firstContacts.Values).ToList(), cancellationToken);
 
 			return companies.Select(c =>
 			{
 				infos.TryGetValue(c.Id, out var info);
 				locations.TryGetValue(c.Id, out var place);
-				var primary = info?.PrimaryContactUserId is int pid && primaries.TryGetValue(pid, out var p) ? p : default;
+				var shownId = info?.PrimaryContactUserId ?? (firstContacts.TryGetValue(c.Id, out var firstId) ? firstId : (int?)null);
+				var primary = shownId is int pid && primaries.TryGetValue(pid, out var p) ? p : default;
 				return new ContactCompanyRowDto
 				{
 					Id = c.Id,
@@ -371,7 +384,7 @@ namespace api_server.Controllers.Contacts.Services
 
 		// ---- people: shared parts ----
 
-		/// <summary>Makes the user, user_info and the link (checks the company is visible are the caller's). Returns the new user id.</summary>
+		/// <summary>Makes the user, crm_user_info and the link (checks the company is visible are the caller's). Returns the new user id.</summary>
 		private async Task<ContactResult<int>> CreatePersonCoreAsync(int ownerCompanyId, int userId, SaveContactPersonDto request, CancellationToken cancellationToken)
 		{
 			if (request.CompanyId is not int companyId || !await CanSeeCompanyAsync(ownerCompanyId, userId, companyId, cancellationToken))
@@ -643,6 +656,9 @@ namespace api_server.Controllers.Contacts.Services
 				.AsNoTracking().Select(m => m.UserId).ToListAsync(cancellationToken)).ToHashSet();
 
 		// ---- small helpers ----
+
+		private static List<LookupItemDto> SortedByName(IEnumerable<LookupItemDto> items) =>
+			items.OrderBy(i => i.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
 
 		private async Task<Dictionary<int, (string Name, string? Title)>> PeopleNamesAsync(List<int> userIds, CancellationToken cancellationToken)
 		{

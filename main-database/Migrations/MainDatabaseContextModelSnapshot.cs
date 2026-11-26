@@ -674,7 +674,7 @@ namespace main_database.Migrations
 
                     b.HasIndex("OwnerCompanyId", "OwnerUserId");
 
-                    b.ToTable("company_contact", (string)null);
+                    b.ToTable("crm_company_contact", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Contacts.CompanyInfo", b =>
@@ -743,7 +743,7 @@ namespace main_database.Migrations
 
                     b.HasIndex("PrimaryContactUserId");
 
-                    b.ToTable("company_info", (string)null);
+                    b.ToTable("crm_company_info", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Contacts.CompanyLocation", b =>
@@ -788,7 +788,7 @@ namespace main_database.Migrations
 
                     b.HasIndex("CompanyId");
 
-                    b.ToTable("company_location", (string)null);
+                    b.ToTable("crm_company_location", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Contacts.CompanyType", b =>
@@ -808,7 +808,7 @@ namespace main_database.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("company_type", (string)null);
+                    b.ToTable("crm_company_type", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Contacts.CompanyUserContact", b =>
@@ -843,7 +843,7 @@ namespace main_database.Migrations
 
                     b.HasIndex("OwnerCompanyId", "OwnerUserId");
 
-                    b.ToTable("company_user_contact", (string)null);
+                    b.ToTable("crm_company_user_contact", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Contacts.ContactType", b =>
@@ -863,7 +863,7 @@ namespace main_database.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("contact_type", (string)null);
+                    b.ToTable("crm_contact_type", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Contacts.LeadSource", b =>
@@ -883,7 +883,7 @@ namespace main_database.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("lead_source", (string)null);
+                    b.ToTable("crm_lead_source", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Contacts.PaymentTerm", b =>
@@ -903,7 +903,7 @@ namespace main_database.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("payment_term", (string)null);
+                    b.ToTable("crm_payment_term", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Contacts.UserInfo", b =>
@@ -940,7 +940,7 @@ namespace main_database.Migrations
 
                     b.HasKey("UserId");
 
-                    b.ToTable("user_info", (string)null);
+                    b.ToTable("crm_user_info", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Gps.GpsAssetType", b =>

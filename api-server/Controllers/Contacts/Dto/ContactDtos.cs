@@ -23,6 +23,8 @@ namespace api_server.Controllers.Contacts.Dto
 		public List<LookupItemDto> ContactTypes { get; set; } = new();
 		public List<LookupItemDto> LeadSources { get; set; } = new();
 		public List<LookupItemDto> PaymentTerms { get; set; } = new();
+		/// <summary>The statuses a contact company can have: 1 Active, 13 Inactive.</summary>
+		public List<LookupItemDto> CompanyStatuses { get; set; } = new();
 		/// <summary>The people who can be a company's account manager: the members of the caller's company.</summary>
 		public List<UserLookupDto> AccountManagers { get; set; } = new();
 	}

@@ -74,7 +74,7 @@ INSERT INTO user_join_request_status ("Id", "Name") VALUES
 ON CONFLICT ("Id") DO NOTHING;
 
 -- ===== Contacts (CRM) =====
-INSERT INTO company_type ("Id", "Name") VALUES
+INSERT INTO crm_company_type ("Id", "Name") VALUES
     (1, 'Customer'),
     (2, 'Vendor'),
     (3, 'Partner'),
@@ -82,13 +82,13 @@ INSERT INTO company_type ("Id", "Name") VALUES
     (5, 'Internal')
 ON CONFLICT ("Id") DO NOTHING;
 
-INSERT INTO contact_type ("Id", "Name") VALUES
+INSERT INTO crm_contact_type ("Id", "Name") VALUES
     (1, 'Contact'),
     (2, 'Vendor'),
     (3, 'Partner')
 ON CONFLICT ("Id") DO NOTHING;
 
-INSERT INTO lead_source ("Id", "Name") VALUES
+INSERT INTO crm_lead_source ("Id", "Name") VALUES
     (1, 'Website'),
     (2, 'Referral'),
     (3, 'Trade Show'),
@@ -98,7 +98,7 @@ INSERT INTO lead_source ("Id", "Name") VALUES
     (7, 'Other')
 ON CONFLICT ("Id") DO NOTHING;
 
-INSERT INTO payment_term ("Id", "Name") VALUES
+INSERT INTO crm_payment_term ("Id", "Name") VALUES
     (1, 'Due on Receipt'),
     (2, 'Net 15'),
     (3, 'Net 30'),

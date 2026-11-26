@@ -12,14 +12,14 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 		// (company_contact, company_user_contact). Ref tables are hand-filled like the other ref tables, so they only get a key here.
 		private void createContactsModel(ModelBuilder modelBuilder)
 		{
-			modelBuilder.Entity<CompanyType>(entity => { entity.ToTable("company_type"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
-			modelBuilder.Entity<ContactType>(entity => { entity.ToTable("contact_type"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
-			modelBuilder.Entity<LeadSource>(entity => { entity.ToTable("lead_source"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
-			modelBuilder.Entity<PaymentTerm>(entity => { entity.ToTable("payment_term"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
+			modelBuilder.Entity<CompanyType>(entity => { entity.ToTable("crm_company_type"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
+			modelBuilder.Entity<ContactType>(entity => { entity.ToTable("crm_contact_type"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
+			modelBuilder.Entity<LeadSource>(entity => { entity.ToTable("crm_lead_source"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
+			modelBuilder.Entity<PaymentTerm>(entity => { entity.ToTable("crm_payment_term"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
 
 			modelBuilder.Entity<CompanyInfo>(entity =>
 			{
-				entity.ToTable("company_info");
+				entity.ToTable("crm_company_info");
 				entity.HasKey(e => e.CompanyId);
 				entity.Property(e => e.CompanyId).ValueGeneratedNever();
 				entity.Property(e => e.AnnualRevenue).HasPrecision(18, 2);
@@ -31,7 +31,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 
 			modelBuilder.Entity<CompanyLocation>(entity =>
 			{
-				entity.ToTable("company_location");
+				entity.ToTable("crm_company_location");
 				entity.HasKey(e => e.Id);
 				entity.Property(e => e.Id).ValueGeneratedOnAdd();
 				entity.HasIndex(e => e.CompanyId);
@@ -40,7 +40,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 
 			modelBuilder.Entity<UserInfo>(entity =>
 			{
-				entity.ToTable("user_info");
+				entity.ToTable("crm_user_info");
 				entity.HasKey(e => e.UserId);
 				entity.Property(e => e.UserId).ValueGeneratedNever();
 				entity.HasOne<User>().WithOne().HasForeignKey<UserInfo>(e => e.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -48,7 +48,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 
 			modelBuilder.Entity<CompanyContact>(entity =>
 			{
-				entity.ToTable("company_contact");
+				entity.ToTable("crm_company_contact");
 				entity.HasKey(e => new { e.OwnerCompanyId, e.ContactCompanyId });
 				// A contact company belongs to one owner only.
 				entity.HasIndex(e => e.ContactCompanyId).IsUnique();
@@ -60,7 +60,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 
 			modelBuilder.Entity<CompanyUserContact>(entity =>
 			{
-				entity.ToTable("company_user_contact");
+				entity.ToTable("crm_company_user_contact");
 				entity.HasKey(e => new { e.OwnerCompanyId, e.ContactUserId });
 				// A contact person belongs to one owner only.
 				entity.HasIndex(e => e.ContactUserId).IsUnique();
