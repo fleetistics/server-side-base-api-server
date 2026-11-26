@@ -14,8 +14,8 @@ using mf.aiApi.mainDatabase.DatabaseContext;
 namespace main_database.Migrations
 {
     [DbContext(typeof(MainDatabaseContext))]
-    [Migration("20261126130831_20261126140828")]
-    partial class _20261126140828
+    [Migration("20261126131244_ModelSync")]
+    partial class ModelSync
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
