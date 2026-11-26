@@ -1,0 +1,157 @@
+using api_server.Controllers.Base;
+using api_server.Controllers.Contacts.Dto;
+using api_server.Controllers.Contacts.Services;
+using Microsoft.AspNetCore.Mvc;
+
+namespace api_server.Controllers.Contacts
+{
+	/// <summary>
+	/// Contacts ▸ Companies and Contacts: the companies and people the caller's company keeps as contacts, plus its own company and colleagues.
+	/// Everything belongs to the caller's company, which comes from the access token (403 without one). A contact marked private shows
+	/// only to the user it is private to; asking for another user's private contact answers 404.
+	///
+	/// NOTE: access is not restricted by role yet (same as the rest of the company admin endpoints).
+	/// </summary>
+	public class ContactsController : AuthAPIController
+	{
+		public ContactsController(IContactsService contacts)
+		{
+			mContacts = contacts;
+		}
+
+		/// <summary>The lists the forms pick from (types, lead sources, payment terms, account managers).</summary>
+		[HttpGet("/api/contacts/lookups")]
+		[ProducesResponseType(typeof(ContactLookupsDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		public async Task<IActionResult> GetLookups(CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Ok(await mContacts.GetLookupsAsync(companyId, cancellationToken));
+		}
+
+		// ---- companies ----
+
+		/// <summary>The caller's own company and the company contacts they can see.</summary>
+		[HttpGet("/api/contacts/companies")]
+		[ProducesResponseType(typeof(IReadOnlyList<ContactCompanyRowDto>), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		public async Task<IActionResult> GetCompanies(CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Ok(await mContacts.ListCompaniesAsync(companyId, UserId, cancellationToken));
+		}
+
+		[HttpGet("/api/contacts/companies/{companyId:int}")]
+		[ProducesResponseType(typeof(ContactCompanyDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> GetCompany(int companyId, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int ownerId) return Forbid();
+			return Answer(await mContacts.GetCompanyAsync(ownerId, UserId, companyId, cancellationToken));
+		}
+
+		/// <summary>Adds a company contact (a company, its info and the link to the caller's company), and optionally its primary contact person.</summary>
+		[HttpPost("/api/contacts/companies")]
+		[ProducesResponseType(typeof(ContactCompanyDto), StatusCodes.Status201Created)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		public async Task<IActionResult> CreateCompany([FromBody] SaveContactCompanyDto request, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int ownerId) return Forbid();
+			var result = await mContacts.CreateCompanyAsync(ownerId, UserId, request, cancellationToken);
+			return result.Outcome == ContactOutcome.Done ? Created($"/api/contacts/companies/{result.Value!.Id}", result.Value) : Failure(result.Outcome, result.Message);
+		}
+
+		/// <summary>Replaces the company's info (send the whole form). The caller's own company can be edited too, except its name and type.</summary>
+		[HttpPut("/api/contacts/companies/{companyId:int}")]
+		[ProducesResponseType(typeof(ContactCompanyDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> UpdateCompany(int companyId, [FromBody] SaveContactCompanyDto request, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int ownerId) return Forbid();
+			return Answer(await mContacts.UpdateCompanyAsync(ownerId, UserId, companyId, request, cancellationToken));
+		}
+
+		// ---- people ----
+
+		/// <summary>The caller's colleagues and the contact people they can see (archived ones too: they carry IsArchived).</summary>
+		[HttpGet("/api/contacts/people")]
+		[ProducesResponseType(typeof(IReadOnlyList<ContactPersonRowDto>), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		public async Task<IActionResult> GetPeople(CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Ok(await mContacts.ListPeopleAsync(companyId, UserId, cancellationToken));
+		}
+
+		[HttpGet("/api/contacts/people/{personId:int}")]
+		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> GetPerson(int personId, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Answer(await mContacts.GetPersonAsync(companyId, UserId, personId, cancellationToken));
+		}
+
+		/// <summary>Adds a contact person (a user of source Contact, its info and the link). With <c>NewCompany</c> the company is made first.</summary>
+		[HttpPost("/api/contacts/people")]
+		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status201Created)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		public async Task<IActionResult> CreatePerson([FromBody] SaveContactPersonDto request, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			var result = await mContacts.CreatePersonAsync(companyId, UserId, request, cancellationToken);
+			return result.Outcome == ContactOutcome.Done ? Created($"/api/contacts/people/{result.Value!.Id}", result.Value) : Failure(result.Outcome, result.Message);
+		}
+
+		/// <summary>Replaces the person's info (send the whole form). Colleagues are not edited here (404): they are managed in User Management.</summary>
+		[HttpPut("/api/contacts/people/{personId:int}")]
+		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> UpdatePerson(int personId, [FromBody] SaveContactPersonDto request, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Answer(await mContacts.UpdatePersonAsync(companyId, UserId, personId, request, cancellationToken));
+		}
+
+		[HttpPost("/api/contacts/people/{personId:int}/archive")]
+		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> Archive(int personId, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Answer(await mContacts.SetArchivedAsync(companyId, UserId, personId, true, cancellationToken));
+		}
+
+		[HttpPost("/api/contacts/people/{personId:int}/unarchive")]
+		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> Unarchive(int personId, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Answer(await mContacts.SetArchivedAsync(companyId, UserId, personId, false, cancellationToken));
+		}
+
+		private IActionResult Answer<T>(ContactResult<T> result) =>
+			result.Outcome == ContactOutcome.Done ? Ok(result.Value) : Failure(result.Outcome, result.Message);
+
+		private ObjectResult Failure(ContactOutcome outcome, string? message) => outcome switch
+		{
+			ContactOutcome.NotFound => Problem(title: "Not Found", detail: message ?? "There is no such contact.", statusCode: StatusCodes.Status404NotFound),
+			ContactOutcome.Invalid => Problem(title: "Invalid input", detail: message, statusCode: StatusCodes.Status400BadRequest),
+			ContactOutcome.NotAllowed => Problem(title: "Not allowed", detail: message, statusCode: StatusCodes.Status403Forbidden),
+			_ => throw new InvalidOperationException("Unhandled outcome"),
+		};
+
+		private readonly IContactsService mContacts;
+	}
+}

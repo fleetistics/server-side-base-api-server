@@ -645,6 +645,304 @@ namespace main_database.Migrations
                     b.ToTable("user_join_request_status", (string)null);
                 });
 
+            modelBuilder.Entity("db_model.Contacts.CompanyContact", b =>
+                {
+                    b.Property<int>("OwnerCompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ContactCompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreationDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int?>("OwnerUserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("OwnerCompanyId", "ContactCompanyId");
+
+                    b.HasIndex("ContactCompanyId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("OwnerCompanyId", "OwnerUserId");
+
+                    b.ToTable("company_contact", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.CompanyInfo", b =>
+                {
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("AccountManagerUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("AccountNumber")
+                        .HasColumnType("text");
+
+                    b.Property<decimal?>("AnnualRevenue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly?>("CustomerSince")
+                        .HasColumnType("date");
+
+                    b.Property<int?>("Employees")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("FleetVehicles")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Industry")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short?>("LeadSourceId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("LegalName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("MainPhone")
+                        .HasColumnType("text");
+
+                    b.Property<short?>("PaymentTermId")
+                        .HasColumnType("smallint");
+
+                    b.Property<int?>("PrimaryContactUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TaxId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Territory")
+                        .HasColumnType("text");
+
+                    b.Property<short?>("TypeId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Website")
+                        .HasColumnType("text");
+
+                    b.HasKey("CompanyId");
+
+                    b.HasIndex("AccountManagerUserId");
+
+                    b.HasIndex("PrimaryContactUserId");
+
+                    b.ToTable("company_info", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.CompanyLocation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("City")
+                        .HasColumnType("text");
+
+                    b.Property<int>("CompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsBilling")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsJobSite")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("text");
+
+                    b.Property<string>("State")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Street")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Zip")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.ToTable("company_location", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.CompanyType", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("company_type", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.CompanyUserContact", b =>
+                {
+                    b.Property<int>("OwnerCompanyId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ContactUserId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreationDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int?>("OwnerUserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("OwnerCompanyId", "ContactUserId");
+
+                    b.HasIndex("ContactUserId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("OwnerCompanyId", "OwnerUserId");
+
+                    b.ToTable("company_user_contact", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.ContactType", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("contact_type", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.LeadSource", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("lead_source", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.PaymentTerm", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("payment_term", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.UserInfo", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<short?>("ContactTypeId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("FirstName")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LastName")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<short?>("LeadSourceId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("Mobile")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("text");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("user_info", (string)null);
+                });
+
             modelBuilder.Entity("db_model.Gps.GpsAssetType", b =>
                 {
                     b.Property<int>("Id")
@@ -2731,6 +3029,83 @@ namespace main_database.Migrations
                     b.HasOne("db_model.Companies.UserJoinInvitation", null)
                         .WithMany()
                         .HasForeignKey("UserJoinInvitationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.Contacts.CompanyContact", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("ContactCompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerCompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.CompanyInfo", b =>
+                {
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("AccountManagerUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithOne()
+                        .HasForeignKey("db_model.Contacts.CompanyInfo", "CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("PrimaryContactUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.CompanyLocation", b =>
+                {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("db_model.Contacts.CompanyUserContact", b =>
+                {
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("ContactUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerCompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.UserInfo", b =>
+                {
+                    b.HasOne("db_model.UserManagement.User", null)
+                        .WithOne()
+                        .HasForeignKey("db_model.Contacts.UserInfo", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
