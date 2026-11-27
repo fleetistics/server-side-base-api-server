@@ -209,7 +209,7 @@ public sealed class UserSettingsApiTests : IAsyncLifetime
                 UserName = "other.user",
                 Password = "irrelevant",
                 DisplayName = "Other",
-                FullName = "Other User",
+                FirstName = "Other User",
                 Email = "other.user@example.test",
                 Phone = "8135550101",
                 StatusId = UserStatus.Active,

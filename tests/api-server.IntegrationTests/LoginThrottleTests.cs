@@ -275,7 +275,7 @@ public sealed class LoginThrottleTests : IAsyncLifetime
             {
                 UserName = userName,
                 DisplayName = userName,
-                FullName = userName,
+                FirstName = userName,
                 Password = new PasswordHasher().Hash(password),
                 StatusId = UserStatus.Active,
             });

@@ -199,7 +199,7 @@ public sealed class TeamContextMockMembersTests
         {
             UserName = $"mock.user{number}.{Guid.NewGuid().ToString("N")[..8]}",
             DisplayName = $"Mock {number}",
-            FullName = $"Mock {number}",
+            FirstName = $"Mock {number}",
             Password = "password",
             StatusId = UserStatus.Active,
             UserSourceId = MockUserSourceId,

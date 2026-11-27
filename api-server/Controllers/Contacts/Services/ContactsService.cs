@@ -1,3 +1,4 @@
+using api_server.Services;
 using System.Net.Mail;
 using api_server.Controllers.Contacts.Dto;
 using db_model.Companies;
@@ -73,8 +74,8 @@ namespace api_server.Controllers.Contacts.Services
 				CompanyStatuses = SortedByName((await mRepository.GetQueryable<CompanyStatus>(s => s.Id == CompanyStatus.Active || s.Id == CompanyStatus.Inactive).AsNoTracking().ToListAsync(cancellationToken)).Select(s => new LookupItemDto { Id = s.Id, Name = s.Name })),
 			};
 			var memberIds = await MemberIdsAsync(ownerCompanyId, cancellationToken);
-			result.AccountManagers = (await mRepository.GetQueryable<User>(u => memberIds.Contains(u.Id)).AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FullName, u.UserName }).ToListAsync(cancellationToken))
-				.Select(u => new UserLookupDto { Id = u.Id, Name = Pick(u.DisplayName, u.FullName, u.UserName) }).OrderBy(u => u.Name).ToList();
+			result.AccountManagers = (await mRepository.GetQueryable<User>(u => memberIds.Contains(u.Id)).AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FirstName, u.LastName, u.UserName }).ToListAsync(cancellationToken))
+				.Select(u => new UserLookupDto { Id = u.Id, Name = Pick(u.DisplayName, UserNameHelper.Compose(u.FirstName, u.LastName), u.UserName) }).OrderBy(u => u.Name).ToList();
 			return result;
 		}
 
@@ -425,6 +426,7 @@ namespace api_server.Controllers.Contacts.Services
 				CompanyId = companyId,
 				StatusId = UserStatus.Inactive,
 				UserSourceId = UserSource.Contact,
+				KindId = UserKind.Contact,
 				LatestUpdate = now,
 			};
 			ApplyPerson(user, request);
@@ -470,7 +472,8 @@ namespace api_server.Controllers.Contacts.Services
 			var last = Blank(request.LastName);
 			var full = last == null ? first : $"{first} {last}";
 			user.DisplayName = full;
-			user.FullName = full;
+			user.FirstName = first;
+			user.LastName = last;
 			user.Email = Blank(request.Email);
 			user.Phone = Blank(request.Phone);
 		}
@@ -554,8 +557,8 @@ namespace api_server.Controllers.Contacts.Services
 			string? managerName = null;
 			if (info?.AccountManagerUserId is int mid)
 			{
-				var m = await mRepository.GetQueryable<User>(u => u.Id == mid).AsNoTracking().Select(u => new { u.DisplayName, u.FullName, u.UserName }).SingleOrDefaultAsync(cancellationToken);
-				managerName = m == null ? null : Pick(m.DisplayName, m.FullName, m.UserName);
+				var m = await mRepository.GetQueryable<User>(u => u.Id == mid).AsNoTracking().Select(u => new { u.DisplayName, u.FirstName, u.LastName, u.UserName }).SingleOrDefaultAsync(cancellationToken);
+				managerName = m == null ? null : Pick(m.DisplayName, UserNameHelper.Compose(m.FirstName, m.LastName), m.UserName);
 			}
 
 			var visibleIds = (await VisiblePersonLinksAsync(ownerCompanyId, userId, cancellationToken)).Select(l => l.ContactUserId).ToList();
@@ -728,7 +731,7 @@ namespace api_server.Controllers.Contacts.Services
 		private static string PersonName(User user, UserInfo? info)
 		{
 			var fromInfo = $"{info?.FirstName} {info?.LastName}".Trim();
-			return fromInfo.Length > 0 ? fromInfo : Pick(user.DisplayName, user.FullName, user.UserName);
+			return fromInfo.Length > 0 ? fromInfo : Pick(user.DisplayName, UserNameHelper.Compose(user.FirstName, user.LastName), user.UserName);
 		}
 
 		private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

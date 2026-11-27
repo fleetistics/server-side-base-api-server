@@ -151,14 +151,14 @@ namespace api_server.Auth
                 {
                     UserName = name,
                     DisplayName = name,
-                    FullName = name,
+                    FirstName = name,
                     UserSourceId = UserSource.AUTO_DeviceUID,
                     StatusId = UserStatus.JustCreated,
                 };
                 repository.Create(user);
                 await repository.SaveAsync(cancellationToken);
                 user.DisplayName = "User_" + user.Id;
-                user.FullName = user.DisplayName;
+                user.FirstName = user.DisplayName;
                 user.Password = passwordHasher.Hash(password);
                 user.StatusId = UserStatus.Active;
                 logger.LogInformation("Auto-login created user {UserId} for device UID {UserName}", user.Id, ForLog(name));
@@ -675,7 +675,8 @@ namespace api_server.Auth
 
             var email = request.Email?.Trim();
             var displayName = request.DisplayName?.Trim();
-            var fullName = request.FullName?.Trim();
+            var firstName = request.FirstName?.Trim();
+            var lastName = request.LastName?.Trim();
             var phone = request.Phone?.Trim();
             var userName = request.UserName?.Trim();
 
@@ -725,9 +726,13 @@ namespace api_server.Auth
             {
                 errors[nameof(request.DisplayName)] = [$"Display name must be at most {MaxNameLength} characters."];
             }
-            if (fullName is { Length: > MaxNameLength })
+            if (firstName is { Length: > MaxNameLength })
             {
-                errors[nameof(request.FullName)] = [$"Full name must be at most {MaxNameLength} characters."];
+                errors[nameof(request.FirstName)] = [$"First name must be at most {MaxNameLength} characters."];
+            }
+            if (lastName is { Length: > MaxNameLength })
+            {
+                errors[nameof(request.LastName)] = [$"Last name must be at most {MaxNameLength} characters."];
             }
             if (!string.IsNullOrEmpty(phone) && !IsValidPhone(phone))
             {
@@ -759,8 +764,9 @@ namespace api_server.Auth
                 {
                     UserName = pendingPrefix + userName,
                     DisplayName = displayName!,
-                    // FullName is required in the database; fall back to the display name.
-                    FullName = string.IsNullOrEmpty(fullName) ? displayName! : fullName,
+                    // FirstName is required in the database; fall back to the display name.
+                    FirstName = string.IsNullOrEmpty(firstName) ? displayName! : firstName,
+                    LastName = string.IsNullOrEmpty(lastName) ? null : lastName,
                     // In e-mail mode the e-mail is the unique field and is prefixed like the user
                     // name; otherwise it is plain data.
                     Email = string.IsNullOrWhiteSpace(email) ? null : email,

@@ -253,7 +253,7 @@ public class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
             UserName = TestUserName,
             Password = TestPasswordHash,
             DisplayName = "Test User",
-            FullName = "Integration Test User",
+            FirstName = "Integration Test User",
             Email = "test.user@example.test",
             Phone = "8135550100",
             StatusId = UserStatus.Active,

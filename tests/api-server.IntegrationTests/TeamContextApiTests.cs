@@ -516,7 +516,7 @@ public sealed class TeamContextApiTests : IAsyncLifetime
             {
                 UserName = $"{name}.{suffix}",
                 DisplayName = name,
-                FullName = name,
+                FirstName = name,
                 Password = "password",
                 StatusId = UserStatus.Active,
                 UserSourceId = 1,
@@ -701,7 +701,7 @@ public sealed class TeamContextApiTests : IAsyncLifetime
     private sealed record TeamHeaderRecord(int? Id, int CreatorUserId, string TeamName, short? StatusId);
     private sealed record TeamDetailsRecord(string? Notes);
     private sealed record MemberRecord(int UserId, short RoleId);
-    private sealed record UserRecord(int Id, string DisplayName, string? UserName, string? FullName);
+    private sealed record UserRecord(int Id, string DisplayName, string? UserName, string? FirstName);
     private sealed record MediaRecord(int Id, string Url, short? GroupKey);
     private sealed record DeviceRecord(int Id, int UserId, string? Name);
     private sealed record MapStateRecord(int MobileGpsDeviceId, double Latitude, double Longitude, long LatestOnMapUpdate);

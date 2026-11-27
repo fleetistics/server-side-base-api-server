@@ -110,7 +110,7 @@ public sealed class UsersApiTests : IAsyncLifetime
             Id = userId,
             UserName = "",
             DisplayName = "Renamed",
-            FullName = "Renamed User",
+            FirstName = "Renamed User",
             Phone = "8135550199",
             Email = "renamed@example.test",
         });
@@ -133,7 +133,8 @@ public sealed class UsersApiTests : IAsyncLifetime
         // Fields never mentioned in the patch body must survive untouched.
         patched.Phone.ShouldBe(before!.Phone);
         patched.Email.ShouldBe(before.Email);
-        patched.FullName.ShouldBe(before.FullName);
+        patched.FirstName.ShouldBe(before.FirstName);
+        patched.LastName.ShouldBe(before.LastName);
     }
 
     [Fact]
@@ -217,13 +218,14 @@ public sealed class UsersApiTests : IAsyncLifetime
             {
                 UserName = "new.user",
                 DisplayName = "New User",
-                FullName = "Newly Created",
+                FirstName = "Newly",
+                LastName = "Created",
                 Phone = "8135550111",
                 Email = "new.user@example.test",
             }),
         };
 
     private sealed record UserResponse(
-        int Id, string? UserName, string DisplayName, string? FullName, string? Phone, string? Email,
+        int Id, string? UserName, string DisplayName, string? FirstName, string? LastName, string? Phone, string? Email,
         int? AvatarImageId);
 }

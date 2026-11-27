@@ -430,7 +430,7 @@ public sealed class EmailModeNotificationTests : IAsyncLifetime
         return await _fixture.QueryDbAsync(async db =>
         {
             var name = "mail-" + Guid.NewGuid().ToString("N");
-            var user = new User { UserName = name, DisplayName = name, FullName = fullName ?? name, Email = email, StatusId = status, Password = "x" };
+            var user = new User { UserName = name, DisplayName = name, FirstName = fullName ?? name, Email = email, StatusId = status, Password = "x" };
             db.Set<User>().Add(user);
             await db.SaveChangesAsync();
             return user.Id;

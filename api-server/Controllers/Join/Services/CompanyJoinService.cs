@@ -1,3 +1,4 @@
+using api_server.Services;
 using System.Net.Mail;
 using api_server.Controllers.Join.Dto;
 using api_server.Services.Notifications;
@@ -81,9 +82,9 @@ namespace api_server.Controllers.Join.Services
 				.AsNoTracking().OrderByDescending(i => i.CreationDate).ToListAsync(cancellationToken);
 			var creatorIds = items.Select(i => i.CreatedByUserId).Distinct().ToList();
 			var creators = await mRepository.GetQueryable<User>(u => creatorIds.Contains(u.Id))
-				.AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FullName, u.UserName }).ToDictionaryAsync(u => u.Id, cancellationToken);
+				.AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FirstName, u.LastName, u.UserName }).ToDictionaryAsync(u => u.Id, cancellationToken);
 			var now = Now();
-			return items.Select(i => ToRow(i, creators.TryGetValue(i.CreatedByUserId, out var c) ? Pick(c.DisplayName, c.FullName, c.UserName) : null, now)).ToList();
+			return items.Select(i => ToRow(i, creators.TryGetValue(i.CreatedByUserId, out var c) ? Pick(c.DisplayName, UserNameHelper.Compose(c.FirstName, c.LastName), c.UserName) : null, now)).ToList();
 		}
 
 		public async Task<(JoinOutcome Outcome, InvitationResultDto? Result)> InviteAsync(int companyId, int userId, InviteUserDto request, string? portalBaseUrl, CancellationToken cancellationToken)
@@ -224,7 +225,7 @@ namespace api_server.Controllers.Join.Services
 			var userIds = requests.Select(r => r.UserId).Distinct().ToList();
 			var invitationIds = requests.Select(r => r.UserJoinInvitationId).Distinct().ToList();
 			var users = await mRepository.GetQueryable<User>(u => userIds.Contains(u.Id))
-				.AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FullName, u.UserName, u.Email }).ToDictionaryAsync(u => u.Id, cancellationToken);
+				.AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FirstName, u.LastName, u.UserName, u.Email }).ToDictionaryAsync(u => u.Id, cancellationToken);
 			var invitations = await mRepository.GetQueryable<UserJoinInvitation>(i => invitationIds.Contains(i.Id))
 				.AsNoTracking().Select(i => new { i.Id, i.TypeId, i.Message, i.PermissionRoleId, i.GroupId }).ToDictionaryAsync(i => i.Id, cancellationToken);
 
@@ -236,7 +237,7 @@ namespace api_server.Controllers.Join.Services
 				{
 					Id = r.Id,
 					UserId = r.UserId,
-					UserName = u == null ? null : Pick(u.DisplayName, u.FullName, u.UserName),
+					UserName = u == null ? null : Pick(u.DisplayName, UserNameHelper.Compose(u.FirstName, u.LastName), u.UserName),
 					Email = u?.Email,
 					Message = i?.Message,
 					InvitationId = r.UserJoinInvitationId,
@@ -392,7 +393,7 @@ namespace api_server.Controllers.Join.Services
 		private async Task<(bool AlreadyMember, int? UserId)> FindUserByEmailAsync(int companyId, string email, CancellationToken cancellationToken)
 		{
 			var lower = email.ToLower();
-			var ids = await mRepository.GetQueryable<User>(u => u.UserSourceId != UserSource.Contact && u.Email != null && u.Email.ToLower() == lower).AsNoTracking().Select(u => u.Id).ToListAsync(cancellationToken);
+			var ids = await mRepository.GetQueryable<User>(u => u.KindId != UserKind.Contact && u.Email != null && u.Email.ToLower() == lower).AsNoTracking().Select(u => u.Id).ToListAsync(cancellationToken);
 			if (ids.Count == 0) return (false, null);
 			var statuses = await mRepository.GetQueryable<User2Company>(m => m.CompanyId == companyId && ids.Contains(m.UserId)).AsNoTracking().Select(m => m.StatusId).ToListAsync(cancellationToken);
 			return (statuses.Any(JoinMembership.IsMember), ids.Count == 1 ? ids[0] : null);
@@ -400,8 +401,8 @@ namespace api_server.Controllers.Join.Services
 
 		private async Task<InvitationResultDto> ResultAsync(UserJoinInvitation invitation, string code, int inviterUserId, string? portalBaseUrl, CancellationToken cancellationToken)
 		{
-			var inviter = await mRepository.GetQueryable<User>(u => u.Id == inviterUserId).AsNoTracking().Select(u => new { u.DisplayName, u.FullName, u.UserName }).SingleOrDefaultAsync(cancellationToken);
-			var inviterName = inviter == null ? null : Pick(inviter.DisplayName, inviter.FullName, inviter.UserName);
+			var inviter = await mRepository.GetQueryable<User>(u => u.Id == inviterUserId).AsNoTracking().Select(u => new { u.DisplayName, u.FirstName, u.LastName, u.UserName }).SingleOrDefaultAsync(cancellationToken);
+			var inviterName = inviter == null ? null : Pick(inviter.DisplayName, UserNameHelper.Compose(inviter.FirstName, inviter.LastName), inviter.UserName);
 			var emailState = await SendEmailAsync(invitation, code, inviterName ?? "A colleague", portalBaseUrl, cancellationToken);
 			return new InvitationResultDto { Invitation = ToRow(invitation, inviterName, Now()), JoinCode = code, EmailState = emailState };
 		}

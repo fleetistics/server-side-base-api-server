@@ -12,11 +12,14 @@ namespace db_model.UserManagement
 
         public string UserName { get; set; } = default!;
         public string DisplayName { get; set; } = default!;
-        public string FullName { get; set; } = default!;
+        public string FirstName { get; set; } = default!;
+        public string? LastName { get; set; }
 
         public DateTime LatestUpdate { get; set; }
         public short StatusId { get; set; }
         public short UserSourceId { get; set; }
+        /// <summary>What the row is: a <see cref="UserKind"/> (1 User, 2 Contact, 3 Test).</summary>
+        public short KindId { get; set; } = UserKind.User;
 
 
         public string? Password { get; set; } = default!;

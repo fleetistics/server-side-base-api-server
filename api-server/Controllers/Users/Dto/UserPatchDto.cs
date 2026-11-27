@@ -23,7 +23,8 @@ namespace api_server.Users
 	public class UserPatchDto : InboundMediaAttachableDto, IValidatableObject
     {
 		public Optional<string> DisplayName { get; set; }
-		public Optional<string?> FullName { get; set; }
+		public Optional<string> FirstName { get; set; }
+		public Optional<string?> LastName { get; set; }
 		public Optional<string?> Phone { get; set; }
 		public Optional<string?> Email { get; set; }
         public Optional<short?> IconKeyOnMap { get; set; }
@@ -40,6 +41,10 @@ namespace api_server.Users
 			if (DisplayName is { IsSet: true, Value: var value } && string.IsNullOrWhiteSpace(value))
 			{
 				yield return new ValidationResult("DisplayName cannot be empty.", [nameof(DisplayName)]);
+			}
+			if (FirstName is { IsSet: true, Value: var first } && string.IsNullOrWhiteSpace(first))
+			{
+				yield return new ValidationResult("FirstName cannot be empty.", [nameof(FirstName)]);
 			}
 		}
 	}

@@ -15,7 +15,9 @@ namespace api_server.Users
             DisplayName = user.DisplayName;
 			UserName = user.UserName;
 			//StatusId = user.StatusId;
-			FullName = user.FullName;
+			FirstName = user.FirstName;
+			LastName = user.LastName;
+			KindId = user.KindId;
 			Phone = user.Phone;
 			Email = user.Email;
 			IsMfaEnabled = user.IsMfaEnabled;
@@ -37,7 +39,10 @@ namespace api_server.Users
         public string DisplayName { get; set; } = default!;
 		public string UserName { get; set; } = default!;
 		//public short StatusId { get; set; }
-		public string? FullName { get; set; } = default!;
+		public string FirstName { get; set; } = default!;
+		public string? LastName { get; set; }
+		/// <summary>What the user is: 1 User, 2 Contact, 3 Test (read only).</summary>
+		public short KindId { get; set; }
         public short? IconKeyOnMap { get; set; }
         public string? Phone { get; set; }
 		public string? Email { get; set; }

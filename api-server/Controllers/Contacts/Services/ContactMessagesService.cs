@@ -1,3 +1,4 @@
+using api_server.Services;
 using api_server.Controllers.Contacts.Dto;
 using api_server.Services.Notifications;
 using db_model.Companies;
@@ -43,9 +44,9 @@ namespace api_server.Controllers.Contacts.Services
 			if (string.IsNullOrWhiteSpace(contact.Email)) return ContactResult<ContactMessageResultDto>.Invalid("This contact has no email address.");
 
 			var sender = await mRepository.GetQueryable<User>(u => u.Id == userId).AsNoTracking()
-				.Select(u => new { u.DisplayName, u.FullName, u.UserName, u.Email }).SingleOrDefaultAsync(cancellationToken);
+				.Select(u => new { u.DisplayName, u.FirstName, u.LastName, u.UserName, u.Email }).SingleOrDefaultAsync(cancellationToken);
 			if (sender == null) return ContactResult<ContactMessageResultDto>.NotFound("There is no such user.");
-			var senderName = Pick(sender.DisplayName, sender.FullName, sender.UserName);
+			var senderName = Pick(sender.DisplayName, UserNameHelper.Compose(sender.FirstName, sender.LastName), sender.UserName);
 			var companyName = await mRepository.GetQueryable<Company>(c => c.Id == ownerCompanyId).AsNoTracking().Select(c => c.Name).SingleAsync(cancellationToken);
 
 			var subject = SingleLine(request.Subject);

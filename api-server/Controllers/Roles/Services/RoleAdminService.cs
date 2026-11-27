@@ -1,3 +1,4 @@
+using api_server.Services;
 using api_server.Controllers.Menu.Services;
 using api_server.Controllers.Roles.Dto;
 using db_model.AppStructure;
@@ -155,7 +156,7 @@ namespace api_server.Controllers.Roles.Services
 			var userIds = memberships.Select(m => m.UserId).ToList();
 			var users = await mRepository.GetQueryable<User>(u => userIds.Contains(u.Id))
 				.AsNoTracking()
-				.Select(u => new { u.Id, u.DisplayName, u.FullName, u.UserName, u.Email })
+				.Select(u => new { u.Id, u.DisplayName, u.FirstName, u.LastName, u.UserName, u.Email })
 				.ToDictionaryAsync(u => u.Id, cancellationToken);
 
 			return memberships
@@ -166,7 +167,7 @@ namespace api_server.Controllers.Roles.Services
 					return new RoleUserDto
 					{
 						UserId = m.UserId,
-						DisplayName = !string.IsNullOrWhiteSpace(u.DisplayName) ? u.DisplayName : !string.IsNullOrWhiteSpace(u.FullName) ? u.FullName : u.UserName,
+						DisplayName = !string.IsNullOrWhiteSpace(u.DisplayName) ? u.DisplayName : !string.IsNullOrWhiteSpace(UserNameHelper.Compose(u.FirstName, u.LastName)) ? UserNameHelper.Compose(u.FirstName, u.LastName) : u.UserName,
 						Email = u.Email,
 						StatusId = m.StatusId,
 						RoleId = m.PermissionRoleId,

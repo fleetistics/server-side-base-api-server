@@ -96,7 +96,7 @@ public sealed class CompanyRolesControllerTests : IAsyncLifetime
             UserName = displayName.ToLowerInvariant().Replace(' ', '.'),
             Password = "x",
             DisplayName = displayName,
-            FullName = displayName,
+            FirstName = displayName,
             Email = displayName.ToLowerInvariant().Replace(' ', '.') + "@example.test",
             Phone = "8135550101",
             StatusId = UserStatus.Active,

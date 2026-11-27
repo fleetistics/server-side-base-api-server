@@ -252,7 +252,7 @@ public sealed class LoginPasswordTests : IAsyncLifetime
             {
                 UserName = userName,
                 DisplayName = userName,
-                FullName = userName,
+                FirstName = userName,
                 Password = password,
                 StatusId = status,
             });

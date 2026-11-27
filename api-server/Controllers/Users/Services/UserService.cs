@@ -123,7 +123,7 @@ namespace api_server.Users
 		//	}
 
 		//	user.DisplayName = data.DisplayName;
-		//	user.FullName = data.FullName;
+		//	user.FirstName = data.FirstName;
 		//	user.Phone = data.Phone;
 		//	user.Email = data.Email;
 		//	user.AvatarImageId = data.AvatarImageId;
@@ -190,7 +190,8 @@ namespace api_server.Users
             // DisplayName can never end up null here: UserPatchDto's validation already
             // rejects an explicitly-empty DisplayName, and omission simply skips the line.
             if (patch.DisplayName.IsSet) user.DisplayName = patch.DisplayName.Value!;
-			if (patch.FullName.IsSet) user.FullName = patch.FullName.Value!;
+			if (patch.FirstName.IsSet) user.FirstName = patch.FirstName.Value!.Trim();
+			if (patch.LastName.IsSet) user.LastName = string.IsNullOrWhiteSpace(patch.LastName.Value) ? null : patch.LastName.Value.Trim();
 			if (patch.Phone.IsSet) user.Phone = patch.Phone.Value;
 			if (patch.Email.IsSet) user.Email = patch.Email.Value;
 			if (patch.IsMfaEnabled.IsSet) user.IsMfaEnabled = patch.IsMfaEnabled.Value;
@@ -207,7 +208,7 @@ namespace api_server.Users
 		//		UserName = data.UserName,
 		//		// TODO: replace together with AuthService.VerifyPassword when hashing lands.
 		//		Password = "some password",
-		//		FullName = data.FullName,
+		//		FirstName = data.FirstName,
 		//		Phone = data.Phone,
 		//		Email = data.Email,
 		//		StatusId = UserStatus.Active,

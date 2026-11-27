@@ -33,7 +33,8 @@ public sealed class RegistrationTests : IAsyncLifetime
             UserName = "new.person",
             Email = "new.person@example.test",
             DisplayName = "New Person",
-            FullName = "Newly Registered Person",
+            FirstName = "Newly Registered",
+            LastName = "Person",
             Phone = "+1 (813) 555-0142",
         });
 
@@ -45,7 +46,8 @@ public sealed class RegistrationTests : IAsyncLifetime
         user.UserSourceId.ShouldBe(UserSource.Registration_Portal);
         user.Password.ShouldBeNull();
         user.DisplayName.ShouldBe("New Person");
-        user.FullName.ShouldBe("Newly Registered Person");
+        user.FirstName.ShouldBe("Newly Registered");
+        user.LastName.ShouldBe("Person");
         user.Phone.ShouldBe("+1 (813) 555-0142");
 
         _fixture.ResetKeySender.HasKeyFor(user.Id).ShouldBeTrue();
@@ -54,7 +56,7 @@ public sealed class RegistrationTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Register_OptionalFieldsOmitted_FullNameFallsBackToDisplayName()
+    public async Task Register_OptionalFieldsOmitted_FirstNameFallsBackToDisplayName()
     {
         var response = await RegisterAsync(_fixture.CreateClient(), new
         {
@@ -65,7 +67,8 @@ public sealed class RegistrationTests : IAsyncLifetime
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         var user = (await GetPendingAsync("minimal")).ShouldHaveSingleItem();
-        user.FullName.ShouldBe("Minimal");
+        user.FirstName.ShouldBe("Minimal");
+        user.LastName.ShouldBeNull();
         user.Phone.ShouldBeNull();
     }
 
@@ -355,7 +358,7 @@ public sealed class RegistrationTests : IAsyncLifetime
             {
                 UserName = "contested",
                 DisplayName = "Early",
-                FullName = "Early",
+                FirstName = "Early",
                 StatusId = UserStatus.Active,
             });
             await db.SaveChangesAsync();
@@ -464,7 +467,7 @@ public sealed class RegistrationTests : IAsyncLifetime
                 UserName = "contested@example.test",
                 Email = "contested@example.test",
                 DisplayName = "Early",
-                FullName = "Early",
+                FirstName = "Early",
                 StatusId = UserStatus.Active,
             });
             await db.SaveChangesAsync();

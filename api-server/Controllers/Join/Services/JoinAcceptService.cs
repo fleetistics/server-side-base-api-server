@@ -1,3 +1,4 @@
+using api_server.Services;
 using api_server.Controllers.Join.Dto;
 using db_model.Companies;
 using db_model.UserManagement;
@@ -193,7 +194,7 @@ namespace api_server.Controllers.Join.Services
 			if (!string.IsNullOrWhiteSpace(email))
 			{
 				var lower = email.Trim().ToLower();
-				ids.AddRange(await mRepository.GetQueryable<User>(u => u.UserSourceId != UserSource.Contact && u.Email != null && u.Email.ToLower() == lower).AsNoTracking().Select(u => u.Id).ToListAsync(cancellationToken));
+				ids.AddRange(await mRepository.GetQueryable<User>(u => u.KindId != UserKind.Contact && u.Email != null && u.Email.ToLower() == lower).AsNoTracking().Select(u => u.Id).ToListAsync(cancellationToken));
 			}
 			var statuses = await mRepository.GetQueryable<User2Company>(m => m.CompanyId == companyId && ids.Contains(m.UserId)).AsNoTracking().Select(m => m.StatusId).ToListAsync(cancellationToken);
 			return statuses.Any(JoinMembership.IsMember);
@@ -202,12 +203,12 @@ namespace api_server.Controllers.Join.Services
 		private async Task<JoinInfoDto> InfoAsync(UserJoinInvitation invitation, CancellationToken cancellationToken)
 		{
 			var companyName = await mRepository.GetQueryable<Company>(c => c.Id == invitation.CompanyId).AsNoTracking().Select(c => c.Name).SingleAsync(cancellationToken);
-			var inviter = await mRepository.GetQueryable<User>(u => u.Id == invitation.CreatedByUserId).AsNoTracking().Select(u => new { u.DisplayName, u.FullName, u.UserName }).SingleOrDefaultAsync(cancellationToken);
+			var inviter = await mRepository.GetQueryable<User>(u => u.Id == invitation.CreatedByUserId).AsNoTracking().Select(u => new { u.DisplayName, u.FirstName, u.LastName, u.UserName }).SingleOrDefaultAsync(cancellationToken);
 			var isCompany = invitation.TypeId == UserJoinInvitationType.Company;
 			return new JoinInfoDto
 			{
 				CompanyName = companyName,
-				InviterName = inviter == null ? null : new[] { inviter.DisplayName, inviter.FullName, inviter.UserName }.FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
+				InviterName = inviter == null ? null : new[] { inviter.DisplayName, UserNameHelper.Compose(inviter.FirstName, inviter.LastName), inviter.UserName }.FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)),
 				InviteeName = invitation.Name,
 				Message = invitation.Message,
 				RequiresApproval = invitation.DoesNotRequireAdminApproval != true,

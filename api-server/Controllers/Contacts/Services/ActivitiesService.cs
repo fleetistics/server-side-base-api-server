@@ -1,3 +1,4 @@
+using api_server.Services;
 using api_server.Controllers.Contacts.Dto;
 using db_model.Companies;
 using db_model.Contacts;
@@ -416,13 +417,13 @@ namespace api_server.Controllers.Contacts.Services
 		{
 			var list = ids.ToList();
 			if (list.Count == 0) return new();
-			var users = await mRepository.GetQueryable<User>(u => list.Contains(u.Id)).AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FullName, u.UserName }).ToListAsync(cancellationToken);
+			var users = await mRepository.GetQueryable<User>(u => list.Contains(u.Id)).AsNoTracking().Select(u => new { u.Id, u.DisplayName, u.FirstName, u.LastName, u.UserName }).ToListAsync(cancellationToken);
 			var infos = (await mRepository.GetQueryable<UserInfo>(i => list.Contains(i.UserId)).AsNoTracking().ToListAsync(cancellationToken)).ToDictionary(i => i.UserId);
 			return users.ToDictionary(u => u.Id, u =>
 			{
 				infos.TryGetValue(u.Id, out var info);
 				var fromInfo = $"{info?.FirstName} {info?.LastName}".Trim();
-				return fromInfo.Length > 0 ? fromInfo : Pick(u.DisplayName, u.FullName, u.UserName);
+				return fromInfo.Length > 0 ? fromInfo : Pick(u.DisplayName, UserNameHelper.Compose(u.FirstName, u.LastName), u.UserName);
 			});
 		}
 

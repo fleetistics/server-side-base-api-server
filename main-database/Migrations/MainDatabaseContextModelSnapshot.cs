@@ -2409,7 +2409,7 @@ namespace main_database.Migrations
                     b.Property<string>("Email")
                         .HasColumnType("text");
 
-                    b.Property<string>("FullName")
+                    b.Property<string>("FirstName")
                         .IsRequired()
                         .HasColumnType("text");
 
@@ -2427,6 +2427,12 @@ namespace main_database.Migrations
 
                     b.Property<bool?>("IsPhoneVerified")
                         .HasColumnType("boolean");
+
+                    b.Property<short>("KindId")
+                        .HasColumnType("smallint");
+
+                    b.Property<string>("LastName")
+                        .HasColumnType("text");
 
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()

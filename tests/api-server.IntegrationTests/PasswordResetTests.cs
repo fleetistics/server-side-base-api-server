@@ -608,7 +608,7 @@ public sealed class PasswordResetTests : IAsyncLifetime
             {
                 UserName = userName,
                 DisplayName = userName,
-                FullName = userName,
+                FirstName = userName,
                 Password = password is null ? null : new PasswordHasher().Hash(password),
                 Email = email,
                 StatusId = UserStatus.Active,

@@ -25,14 +25,14 @@ namespace api_server.Services.Notifications
 			var ids = userIds.ToList();
 			var users = await repository.GetQueryable<User>(u => ids.Contains(u.Id) && u.StatusId == UserStatus.Active)
 				.AsNoTracking()
-				.Select(u => new { u.Id, u.Email, u.DisplayName, u.FullName })
+				.Select(u => new { u.Id, u.Email, u.DisplayName, u.FirstName, u.LastName })
 				.ToListAsync(cancellationToken);
 
 			return users
 				.Select(u => (User: u, Address: u.Email?.Trim()))
 				.Where(x => IsBareAddress(x.Address))
 				.OrderBy(x => x.User.Id)
-				.Select(x => new EmailResolvedDestination(x.User.Id, x.Address!, displayName(x.User.DisplayName, x.User.FullName), Ref: $"u:{x.User.Id}"))
+				.Select(x => new EmailResolvedDestination(x.User.Id, x.Address!, displayName(x.User.DisplayName, UserNameHelper.Compose(x.User.FirstName, x.User.LastName)), Ref: $"u:{x.User.Id}"))
 				.ToList();
 		}
 
