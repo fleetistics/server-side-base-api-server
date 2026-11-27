@@ -175,6 +175,17 @@ namespace api_server.Controllers.Contacts.Dto
 		public string? CompanyName { get; set; }
 	}
 
+	/// <summary>Changes only the fields that are sent (the contact panel's dropdowns). A field left out is unchanged.</summary>
+	public class PatchContactPersonDto
+	{
+		/// <summary>A ContactType id.</summary>
+		public short? ContactTypeId { get; set; }
+		/// <summary>Whether the contact is active.</summary>
+		public bool? IsActive { get; set; }
+		/// <summary>True: the person becomes the primary contact of their company; false: they stop being it.</summary>
+		public bool? IsPrimary { get; set; }
+	}
+
 	/// <summary>Creates a contact person, or replaces the fields of one (send the whole form).</summary>
 	public class SaveContactPersonDto
 	{

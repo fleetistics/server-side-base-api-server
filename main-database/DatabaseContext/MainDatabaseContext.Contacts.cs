@@ -16,6 +16,10 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			modelBuilder.Entity<ContactType>(entity => { entity.ToTable("crm_contact_type"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
 			modelBuilder.Entity<LeadSource>(entity => { entity.ToTable("crm_lead_source"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
 			modelBuilder.Entity<PaymentTerm>(entity => { entity.ToTable("crm_payment_term"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
+			modelBuilder.Entity<ActivityType>(entity => { entity.ToTable("crm_activity_type"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
+			modelBuilder.Entity<ActivityPriority>(entity => { entity.ToTable("crm_activity_priority"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
+			modelBuilder.Entity<ActivityStatus>(entity => { entity.ToTable("crm_activity_status"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
+			modelBuilder.Entity<RecurrenceFrequency>(entity => { entity.ToTable("crm_recurrence_frequency"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
 
 			modelBuilder.Entity<CompanyInfo>(entity =>
 			{
@@ -68,6 +72,39 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 				entity.HasOne<Company>().WithMany().HasForeignKey(e => e.OwnerCompanyId).OnDelete(DeleteBehavior.Cascade);
 				entity.HasOne<User>().WithMany().HasForeignKey(e => e.ContactUserId).OnDelete(DeleteBehavior.Cascade);
 				entity.HasOne<User>().WithMany().HasForeignKey(e => e.OwnerUserId).OnDelete(DeleteBehavior.SetNull);
+			});
+
+			modelBuilder.Entity<ActivitySeries>(entity =>
+			{
+				entity.ToTable("crm_activity_series");
+				entity.HasKey(e => e.Id);
+				entity.Property(e => e.Id).ValueGeneratedOnAdd();
+				entity.HasOne<Company>().WithMany().HasForeignKey(e => e.OwnerCompanyId).OnDelete(DeleteBehavior.Cascade);
+				entity.HasOne<RecurrenceFrequency>().WithMany().HasForeignKey(e => e.FrequencyId).OnDelete(DeleteBehavior.Restrict);
+			});
+
+			modelBuilder.Entity<Activity>(entity =>
+			{
+				entity.ToTable("crm_activity");
+				entity.HasKey(e => e.Id);
+				entity.Property(e => e.Id).ValueGeneratedOnAdd();
+				entity.Property(e => e.Subject).HasMaxLength(200);
+				// The lists: an owner's activities by time, and everything of one company, person or series.
+				entity.HasIndex(e => new { e.OwnerCompanyId, e.StartAt });
+				entity.HasIndex(e => e.CompanyId);
+				entity.HasIndex(e => e.ContactUserId);
+				entity.HasIndex(e => e.SeriesId);
+				entity.HasOne<Company>().WithMany().HasForeignKey(e => e.OwnerCompanyId).OnDelete(DeleteBehavior.Cascade);
+				entity.HasOne<Company>().WithMany().HasForeignKey(e => e.CompanyId).OnDelete(DeleteBehavior.Cascade);
+				entity.HasOne<User>().WithMany().HasForeignKey(e => e.ContactUserId).OnDelete(DeleteBehavior.Cascade);
+				// Losing the assignee, the creator or the private owner must not delete the activity.
+				entity.HasOne<User>().WithMany().HasForeignKey(e => e.AssignedToUserId).OnDelete(DeleteBehavior.SetNull);
+				entity.HasOne<User>().WithMany().HasForeignKey(e => e.CreatedByUserId).OnDelete(DeleteBehavior.SetNull);
+				entity.HasOne<User>().WithMany().HasForeignKey(e => e.OwnerUserId).OnDelete(DeleteBehavior.SetNull);
+				entity.HasOne<ActivitySeries>().WithMany().HasForeignKey(e => e.SeriesId).OnDelete(DeleteBehavior.SetNull);
+				entity.HasOne<ActivityType>().WithMany().HasForeignKey(e => e.TypeId).OnDelete(DeleteBehavior.Restrict);
+				entity.HasOne<ActivityPriority>().WithMany().HasForeignKey(e => e.PriorityId).OnDelete(DeleteBehavior.Restrict);
+				entity.HasOne<ActivityStatus>().WithMany().HasForeignKey(e => e.StatusId).OnDelete(DeleteBehavior.Restrict);
 			});
 		}
 	}

@@ -46,6 +46,8 @@ namespace api_server.core
 				.AddSingleton<api_server.Controllers.Join.JoinCodes>()
 				.AddSingleton<api_server.Controllers.Join.JoinAttemptThrottle>()
 				.AddScoped<api_server.Controllers.Contacts.Services.IContactsService, api_server.Controllers.Contacts.Services.ContactsService>()
+				.AddScoped<api_server.Controllers.Contacts.Services.IActivitiesService, api_server.Controllers.Contacts.Services.ActivitiesService>()
+				.AddScoped<api_server.Controllers.Contacts.Services.IContactMessagesService, api_server.Controllers.Contacts.Services.ContactMessagesService>()
 				.AddScoped<api_server.Controllers.Join.Services.ICompanyJoinService, api_server.Controllers.Join.Services.CompanyJoinService>()
 				.AddScoped<api_server.Controllers.Join.Services.IJoinAcceptService, api_server.Controllers.Join.Services.JoinAcceptService>()
 				.AddScoped<IMediaStorage, MediaStorageService>()

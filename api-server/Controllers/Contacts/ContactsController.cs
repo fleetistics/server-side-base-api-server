@@ -14,9 +14,10 @@ namespace api_server.Controllers.Contacts
 	/// </summary>
 	public class ContactsController : AuthAPIController
 	{
-		public ContactsController(IContactsService contacts)
+		public ContactsController(IContactsService contacts, IContactMessagesService messages)
 		{
 			mContacts = contacts;
+			mMessages = messages;
 		}
 
 		/// <summary>The lists the forms pick from (types, lead sources, payment terms, account managers).</summary>
@@ -121,6 +122,30 @@ namespace api_server.Controllers.Contacts
 			return Answer(await mContacts.UpdatePersonAsync(companyId, UserId, personId, request, cancellationToken));
 		}
 
+		/// <summary>Changes only the contact type, the active flag and/or whether the person is their company's primary contact (the fields that are sent). Colleagues answer 404.</summary>
+		[HttpPatch("/api/contacts/people/{personId:int}")]
+		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> PatchPerson(int personId, [FromBody] PatchContactPersonDto request, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Answer(await mContacts.PatchPersonAsync(companyId, UserId, personId, request, cancellationToken));
+		}
+
+		/// <summary>Sends the person an email (through the notification system; replies go to the caller) and logs an Email activity for it. Colleagues can be messaged too.</summary>
+		[HttpPost("/api/contacts/people/{personId:int}/message")]
+		[ProducesResponseType(typeof(ContactMessageResultDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> SendMessage(int personId, [FromBody] SendContactMessageDto request, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Answer(await mMessages.SendAsync(companyId, UserId, personId, request, cancellationToken));
+		}
+
 		[HttpPost("/api/contacts/people/{personId:int}/archive")]
 		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -153,5 +178,6 @@ namespace api_server.Controllers.Contacts
 		};
 
 		private readonly IContactsService mContacts;
+		private readonly IContactMessagesService mMessages;
 	}
 }

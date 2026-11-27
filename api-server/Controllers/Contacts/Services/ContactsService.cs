@@ -46,6 +46,7 @@ namespace api_server.Controllers.Contacts.Services
 		Task<ContactResult<ContactPersonDto>> CreatePersonAsync(int ownerCompanyId, int userId, SaveContactPersonDto request, CancellationToken cancellationToken);
 		Task<ContactResult<ContactPersonDto>> UpdatePersonAsync(int ownerCompanyId, int userId, int personId, SaveContactPersonDto request, CancellationToken cancellationToken);
 		Task<ContactResult<ContactPersonDto>> SetArchivedAsync(int ownerCompanyId, int userId, int personId, bool archived, CancellationToken cancellationToken);
+		Task<ContactResult<ContactPersonDto>> PatchPersonAsync(int ownerCompanyId, int userId, int personId, PatchContactPersonDto request, CancellationToken cancellationToken);
 	}
 
 	public sealed class ContactsService : IContactsService
@@ -379,6 +380,32 @@ namespace api_server.Controllers.Contacts.Services
 				link.LatestUpdate = Now();
 				await mRepository.SaveAsync(cancellationToken);
 			}
+			return ContactResult<ContactPersonDto>.Ok((await PersonDtoAsync(ownerCompanyId, userId, personId, cancellationToken))!);
+		}
+
+		public async Task<ContactResult<ContactPersonDto>> PatchPersonAsync(int ownerCompanyId, int userId, int personId, PatchContactPersonDto request, CancellationToken cancellationToken)
+		{
+			// Colleagues have no link here: they are managed in User Management.
+			var link = await FindVisiblePersonLinkAsync(ownerCompanyId, userId, personId, cancellationToken);
+			if (link == null) return ContactResult<ContactPersonDto>.NotFound();
+			if (request.ContactTypeId is short ct && !await mRepository.GetQueryable<ContactType>(t => t.Id == ct).AnyAsync(cancellationToken))
+				return ContactResult<ContactPersonDto>.Invalid("Unknown contact type.");
+
+			var now = Now();
+			var user = await mRepository.GetQueryable<User>(u => u.Id == personId).SingleAsync(cancellationToken);
+			var info = await mRepository.GetQueryable<UserInfo>(i => i.UserId == personId).SingleOrDefaultAsync(cancellationToken);
+			if (info == null)
+			{
+				info = new UserInfo { UserId = personId };
+				mRepository.Create(info);
+			}
+			if (request.ContactTypeId != null) info.ContactTypeId = request.ContactTypeId;
+			if (request.IsActive != null) info.IsActive = request.IsActive.Value;
+			info.LatestUpdate = now;
+			link.LatestUpdate = now;
+			if (user.CompanyId is int companyId) await ApplyPrimaryAsync(companyId, personId, request.IsPrimary, now, cancellationToken);
+
+			await mRepository.SaveAsync(cancellationToken);
 			return ContactResult<ContactPersonDto>.Ok((await PersonDtoAsync(ownerCompanyId, userId, personId, cancellationToken))!);
 		}
 

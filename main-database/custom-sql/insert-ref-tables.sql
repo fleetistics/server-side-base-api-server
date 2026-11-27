@@ -106,6 +106,36 @@ INSERT INTO crm_payment_term ("Id", "Name") VALUES
     (5, 'Net 60')
 ON CONFLICT ("Id") DO NOTHING;
 
+INSERT INTO crm_activity_type ("Id", "Name") VALUES
+    (1, 'Call Complete'),
+    (2, 'Call Attempt'),
+    (3, 'Call VM'),
+    (4, 'Meeting'),
+    (5, 'Email'),
+    (6, 'Site Visit'),
+    (7, 'Webinar'),
+    (8, 'Other')
+ON CONFLICT ("Id") DO NOTHING;
+
+INSERT INTO crm_activity_priority ("Id", "Name") VALUES
+    (1, 'Low'),
+    (2, 'Normal'),
+    (3, 'High')
+ON CONFLICT ("Id") DO NOTHING;
+
+INSERT INTO crm_activity_status ("Id", "Name") VALUES
+    (1, 'Scheduled'),
+    (2, 'Completed'),
+    (3, 'Cancelled')
+ON CONFLICT ("Id") DO NOTHING;
+
+INSERT INTO crm_recurrence_frequency ("Id", "Name") VALUES
+    (1, 'Daily'),
+    (2, 'Weekly'),
+    (3, 'Monthly'),
+    (4, 'Yearly')
+ON CONFLICT ("Id") DO NOTHING;
+
 -- ===== Teams =====
 INSERT INTO team_status ("Id", "Name") VALUES
     (0, 'Generate Key'),
