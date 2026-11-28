@@ -656,7 +656,7 @@ namespace main_database.Migrations
                     b.Property<int?>("AssignedToUserId")
                         .HasColumnType("integer");
 
-                    b.Property<int>("CompanyId")
+                    b.Property<int?>("CompanyId")
                         .HasColumnType("integer");
 
                     b.Property<DateTime?>("CompletedAt")
@@ -1009,11 +1009,11 @@ namespace main_database.Migrations
                     b.Property<int>("ContactUserId")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("ContactCompanyId")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreationDate")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsArchived")
-                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("LatestUpdate")
                         .IsConcurrencyToken()
@@ -1026,10 +1026,14 @@ namespace main_database.Migrations
 
                     b.HasKey("OwnerCompanyId", "ContactUserId");
 
+                    b.HasIndex("ContactCompanyId");
+
                     b.HasIndex("ContactUserId")
                         .IsUnique();
 
                     b.HasIndex("OwnerUserId");
+
+                    b.HasIndex("OwnerCompanyId", "ContactCompanyId");
 
                     b.HasIndex("OwnerCompanyId", "OwnerUserId");
 
@@ -1054,6 +1058,26 @@ namespace main_database.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("crm_contact_type", (string)null);
+                });
+
+            modelBuilder.Entity("db_model.Contacts.EmployeeStatus", b =>
+                {
+                    b.Property<short>("Id")
+                        .HasColumnType("smallint");
+
+                    b.Property<DateTime>("LatestUpdate")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("timestamp with time zone")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("crm_employee_status", (string)null);
                 });
 
             modelBuilder.Entity("db_model.Contacts.LeadSource", b =>
@@ -1124,11 +1148,11 @@ namespace main_database.Migrations
                     b.Property<short?>("ContactTypeId")
                         .HasColumnType("smallint");
 
+                    b.Property<short?>("EmployeeStatusId")
+                        .HasColumnType("smallint");
+
                     b.Property<string>("FirstName")
                         .HasColumnType("text");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
 
                     b.Property<string>("LastName")
                         .HasColumnType("text");
@@ -3259,8 +3283,7 @@ namespace main_database.Migrations
                     b.HasOne("db_model.Companies.Company", null)
                         .WithMany()
                         .HasForeignKey("CompanyId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("db_model.UserManagement.User", null)
                         .WithMany()
@@ -3372,6 +3395,11 @@ namespace main_database.Migrations
 
             modelBuilder.Entity("db_model.Contacts.CompanyUserContact", b =>
                 {
+                    b.HasOne("db_model.Companies.Company", null)
+                        .WithMany()
+                        .HasForeignKey("ContactCompanyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("db_model.UserManagement.User", null)
                         .WithMany()
                         .HasForeignKey("ContactUserId")

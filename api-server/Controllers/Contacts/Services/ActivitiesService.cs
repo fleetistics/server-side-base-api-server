@@ -308,7 +308,7 @@ namespace api_server.Controllers.Contacts.Services
 		/// The company the activity is about. A contact brings their company; a colleague belongs to the caller's company.
 		/// Whether it is private: its company or contact is.
 		/// </summary>
-		private async Task<(int CompanyId, bool IsPrivate, string? Error)> ResolveTargetAsync(int ownerCompanyId, int userId, SaveActivityDto request, CancellationToken cancellationToken)
+		private async Task<(int? CompanyId, bool IsPrivate, string? Error)> ResolveTargetAsync(int ownerCompanyId, int userId, SaveActivityDto request, CancellationToken cancellationToken)
 		{
 			var isPrivate = false;
 			var companyId = request.CompanyId;
@@ -316,22 +316,22 @@ namespace api_server.Controllers.Contacts.Services
 			if (request.ContactUserId is int personId)
 			{
 				var isColleague = (await MemberIdsAsync(ownerCompanyId, cancellationToken)).Contains(personId);
-				int personCompany;
+				int? personCompany;
 				if (isColleague) personCompany = ownerCompanyId;
 				else
 				{
 					var link = await mRepository.GetQueryable<CompanyUserContact>(c => c.OwnerCompanyId == ownerCompanyId && c.ContactUserId == personId && (c.OwnerUserId == null || c.OwnerUserId == userId)).AsNoTracking().SingleOrDefaultAsync(cancellationToken);
 					if (link == null) return (0, false, "There is no such contact.");
 					isPrivate |= link.OwnerUserId != null;
-					var person = await mRepository.GetQueryable<User>(u => u.Id == personId).AsNoTracking().Select(u => u.CompanyId).SingleOrDefaultAsync(cancellationToken);
-					if (person is not int pc) return (0, false, "The contact has no company.");
-					personCompany = pc;
+					if (await mRepository.GetQueryable<User>(u => u.Id == personId && u.StatusId == UserStatus.Archived).AnyAsync(cancellationToken)) return (0, false, "The contact is archived.");
+					personCompany = link.ContactCompanyId;
 				}
 				if (companyId != null && companyId != personCompany) return (0, false, "The contact does not belong to that company.");
 				companyId = personCompany;
 			}
 
-			if (companyId is not int cid) return (0, false, "Choose a company or a contact.");
+			// A contact without a company is a valid target: the activity then has no company.
+			if (companyId is not int cid) return request.ContactUserId != null ? (null, isPrivate, null) : (0, false, "Choose a company or a contact.");
 			if (cid != ownerCompanyId)
 			{
 				var link = await mRepository.GetQueryable<CompanyContact>(c => c.OwnerCompanyId == ownerCompanyId && c.ContactCompanyId == cid && (c.OwnerUserId == null || c.OwnerUserId == userId)).AsNoTracking().SingleOrDefaultAsync(cancellationToken);
@@ -361,7 +361,7 @@ namespace api_server.Controllers.Contacts.Services
 		{
 			if (activities.Count == 0) return new();
 
-			var companyIds = activities.Select(a => a.CompanyId).Distinct().ToList();
+			var companyIds = activities.Where(a => a.CompanyId != null).Select(a => a.CompanyId!.Value).Distinct().ToList();
 			var companies = await mRepository.GetQueryable<Company>(c => companyIds.Contains(c.Id)).AsNoTracking().Select(c => new { c.Id, c.Name }).ToListAsync(cancellationToken);
 			var companyNames = companies.ToDictionary(c => c.Id, c => c.Name);
 
@@ -394,7 +394,7 @@ namespace api_server.Controllers.Contacts.Services
 					PriorityId = a.PriorityId,
 					StatusId = a.StatusId,
 					CompanyId = a.CompanyId,
-					CompanyName = companyNames.GetValueOrDefault(a.CompanyId),
+					CompanyName = a.CompanyId is int acid ? companyNames.GetValueOrDefault(acid) : null,
 					ContactUserId = a.ContactUserId,
 					ContactName = a.ContactUserId is int c ? userNames.GetValueOrDefault(c) : null,
 					AssignedToUserId = a.AssignedToUserId,

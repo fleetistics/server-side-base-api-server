@@ -1,4 +1,6 @@
+using api_server.Companies;
 using api_server.Services;
+using exs.commons.Json;
 using System.Net.Mail;
 using api_server.Controllers.Contacts.Dto;
 using db_model.Companies;
@@ -46,7 +48,8 @@ namespace api_server.Controllers.Contacts.Services
 		Task<ContactResult<ContactPersonDto>> GetPersonAsync(int ownerCompanyId, int userId, int personId, CancellationToken cancellationToken);
 		Task<ContactResult<ContactPersonDto>> CreatePersonAsync(int ownerCompanyId, int userId, SaveContactPersonDto request, CancellationToken cancellationToken);
 		Task<ContactResult<ContactPersonDto>> UpdatePersonAsync(int ownerCompanyId, int userId, int personId, SaveContactPersonDto request, CancellationToken cancellationToken);
-		Task<ContactResult<ContactPersonDto>> SetArchivedAsync(int ownerCompanyId, int userId, int personId, bool archived, CancellationToken cancellationToken);
+		/// <summary>Makes the person Active, Suspended or Archived (a UserStatus). Archived is terminal. A colleague changes their membership of the caller's company, a contact their user status.</summary>
+		Task<ContactResult<ContactPersonDto>> SetStatusAsync(int ownerCompanyId, int userId, int personId, short target, CancellationToken cancellationToken);
 		Task<ContactResult<ContactPersonDto>> PatchPersonAsync(int ownerCompanyId, int userId, int personId, PatchContactPersonDto request, CancellationToken cancellationToken);
 	}
 
@@ -54,9 +57,10 @@ namespace api_server.Controllers.Contacts.Services
 	{
 		private const int MaxLocations = 20;
 
-		public ContactsService(IRepository repository, TimeProvider time)
+		public ContactsService(IRepository repository, ICompanyAdminService companyAdmin, TimeProvider time)
 		{
 			mRepository = repository;
+			mCompanyAdmin = companyAdmin;
 			mTime = time;
 		}
 
@@ -70,6 +74,7 @@ namespace api_server.Controllers.Contacts.Services
 				CompanyTypes = SortedByName((await mRepository.GetQueryable<CompanyType>(t => t.Id != CompanyType.Internal).AsNoTracking().ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name })),
 				ContactTypes = SortedByName((await mRepository.GetQueryable<ContactType>().AsNoTracking().ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name })),
 				LeadSources = SortedByName((await mRepository.GetQueryable<LeadSource>().AsNoTracking().ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name })),
+				EmployeeStatuses = SortedByName((await mRepository.GetQueryable<EmployeeStatus>().AsNoTracking().ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name })),
 				PaymentTerms = SortedByName((await mRepository.GetQueryable<PaymentTerm>().AsNoTracking().ToListAsync(cancellationToken)).Select(t => new LookupItemDto { Id = t.Id, Name = t.Name })),
 				CompanyStatuses = SortedByName((await mRepository.GetQueryable<CompanyStatus>(s => s.Id == CompanyStatus.Active || s.Id == CompanyStatus.Inactive).AsNoTracking().ToListAsync(cancellationToken)).Select(s => new LookupItemDto { Id = s.Id, Name = s.Name })),
 			};
@@ -99,9 +104,12 @@ namespace api_server.Controllers.Contacts.Services
 			var firstContacts = new Dictionary<int, int>();
 			if (withoutPrimary.Count > 0)
 			{
-				var personIds = (await VisiblePersonLinksAsync(ownerCompanyId, userId, cancellationToken)).Where(l => !l.IsArchived).Select(l => l.ContactUserId).ToList();
-				var people = await mRepository.GetQueryable<User>(u => personIds.Contains(u.Id) && u.CompanyId != null && withoutPrimary.Contains(u.CompanyId.Value)).AsNoTracking().OrderBy(u => u.Id).Select(u => new { u.Id, u.CompanyId }).ToListAsync(cancellationToken);
-				foreach (var person in people) firstContacts.TryAdd(person.CompanyId!.Value, person.Id);
+				var people = (await VisiblePersonLinksAsync(ownerCompanyId, userId, cancellationToken))
+					.Where(l => l.ContactCompanyId != null && withoutPrimary.Contains(l.ContactCompanyId.Value)).OrderBy(l => l.ContactUserId).ToList();
+				var candidateIds = people.Select(l => l.ContactUserId).ToList();
+				var activeIds = (await mRepository.GetQueryable<User>(u => candidateIds.Contains(u.Id) && u.StatusId == UserStatus.Active).AsNoTracking().Select(u => u.Id).ToListAsync(cancellationToken)).ToHashSet();
+				people = people.Where(l => activeIds.Contains(l.ContactUserId)).ToList();
+				foreach (var person in people) firstContacts.TryAdd(person.ContactCompanyId!.Value, person.ContactUserId);
 			}
 			var primaries = await PeopleNamesAsync(primaryIds.Concat(firstContacts.Values).ToList(), cancellationToken);
 
@@ -236,12 +244,14 @@ namespace api_server.Controllers.Contacts.Services
 		public async Task<IReadOnlyList<ContactPersonRowDto>> ListPeopleAsync(int ownerCompanyId, int userId, CancellationToken cancellationToken)
 		{
 			var links = await VisiblePersonLinksAsync(ownerCompanyId, userId, cancellationToken);
-			var memberIds = await MemberIdsAsync(ownerCompanyId, cancellationToken);
+			// Colleagues: active members and members suspended by the company (they can be resumed from here).
+			var memberStatuses = await MemberStatusesAsync(ownerCompanyId, cancellationToken);
+			var memberIds = memberStatuses.Keys.ToHashSet();
 			var ids = links.Select(l => l.ContactUserId).Concat(memberIds).Distinct().ToList();
 
 			var users = await mRepository.GetQueryable<User>(u => ids.Contains(u.Id)).AsNoTracking().ToListAsync(cancellationToken);
 			var infos = (await mRepository.GetQueryable<UserInfo>(i => ids.Contains(i.UserId)).AsNoTracking().ToListAsync(cancellationToken)).ToDictionary(i => i.UserId);
-			var companyIds = users.Where(u => u.CompanyId != null).Select(u => u.CompanyId!.Value).Distinct().ToList();
+			var companyIds = links.Where(l => l.ContactCompanyId != null).Select(l => l.ContactCompanyId!.Value).Distinct().ToList();
 			var companyNames = (await mRepository.GetQueryable<Company>(c => companyIds.Contains(c.Id)).AsNoTracking().Select(c => new { c.Id, c.Name }).ToListAsync(cancellationToken)).ToDictionary(c => c.Id, c => c.Name);
 			var primaryIds = (await mRepository.GetQueryable<CompanyInfo>(i => i.PrimaryContactUserId != null && ids.Contains(i.PrimaryContactUserId!.Value)).AsNoTracking().Select(i => i.PrimaryContactUserId!.Value).ToListAsync(cancellationToken)).ToHashSet();
 			var linkByUser = links.ToDictionary(l => l.ContactUserId);
@@ -259,14 +269,15 @@ namespace api_server.Controllers.Contacts.Services
 						Name = PersonName(u, info),
 						IsEmployee = false,
 						ContactTypeId = info?.ContactTypeId ?? ContactType.Contact,
-						CompanyId = u.CompanyId,
-						CompanyName = u.CompanyId is int cid && companyNames.TryGetValue(cid, out var n) ? n : null,
+						EmployeeStatusId = info?.EmployeeStatusId,
+						CompanyId = link.ContactCompanyId,
+						CompanyName = link.ContactCompanyId is int cid && companyNames.TryGetValue(cid, out var n) ? n : null,
 						Title = info?.Title,
 						Email = u.Email,
 						Phone = u.Phone,
 						IsPrimary = primaryIds.Contains(u.Id),
-						IsActive = info?.IsActive ?? true,
-						IsArchived = link.IsArchived,
+						StatusId = u.StatusId,
+						KindId = u.KindId,
 						IsPrivate = link.OwnerUserId != null,
 					});
 				}
@@ -283,7 +294,9 @@ namespace api_server.Controllers.Contacts.Services
 						Email = u.Email,
 						Phone = u.Phone,
 						IsPrimary = primaryIds.Contains(u.Id),
-						IsActive = true,
+						StatusId = ContactStatusOfMember(memberStatuses[u.Id]),
+						EmployeeStatusId = info?.EmployeeStatusId,
+						KindId = u.KindId,
 					});
 				}
 			}
@@ -311,9 +324,9 @@ namespace api_server.Controllers.Contacts.Services
 				request.IsPrimary ??= true;
 				request.IsPrivate ??= request.NewCompany.IsPrivate;
 			}
-			else if (request.CompanyId is not int cid || !await CanSeeCompanyAsync(ownerCompanyId, userId, cid, cancellationToken))
+			else if (request.CompanyId is int cid && !await CanSeeCompanyAsync(ownerCompanyId, userId, cid, cancellationToken))
 			{
-				return ContactResult<ContactPersonDto>.Invalid("Pick the company the person works for.");
+				return ContactResult<ContactPersonDto>.Invalid("Pick one of your companies, or leave the company empty.");
 			}
 
 			var created = await CreatePersonCoreAsync(ownerCompanyId, userId, request, cancellationToken);
@@ -329,8 +342,10 @@ namespace api_server.Controllers.Contacts.Services
 
 			var error = await ValidatePersonAsync(request, cancellationToken);
 			if (error != null) return ContactResult<ContactPersonDto>.Invalid(error);
-			if (request.CompanyId is not int newCompanyId || !await CanSeeCompanyAsync(ownerCompanyId, userId, newCompanyId, cancellationToken))
-				return ContactResult<ContactPersonDto>.Invalid("Pick the company the person works for.");
+			var newCompanyId = request.CompanyId;
+			if (newCompanyId is int ncid && !await CanSeeCompanyAsync(ownerCompanyId, userId, ncid, cancellationToken))
+				return ContactResult<ContactPersonDto>.Invalid("Pick one of your companies, or leave the company empty.");
+			if (newCompanyId == null && request.IsPrimary == true) return ContactResult<ContactPersonDto>.Invalid("A person without a company cannot be a primary contact.");
 
 			if (request.IsPrivate == false && link.OwnerUserId != null)
 			{
@@ -344,9 +359,11 @@ namespace api_server.Controllers.Contacts.Services
 
 			var now = Now();
 			var user = await mRepository.GetQueryable<User>(u => u.Id == personId).SingleAsync(cancellationToken);
-			var oldCompanyId = user.CompanyId;
+			var oldCompanyId = link.ContactCompanyId;
+			if (user.StatusId == UserStatus.Archived) return ContactResult<ContactPersonDto>.Invalid("An archived person cannot be changed.");
+			if (request.IsPrimary == true && user.StatusId != UserStatus.Active) return ContactResult<ContactPersonDto>.Invalid("Only an active contact can be primary.");
 			ApplyPerson(user, request);
-			user.CompanyId = newCompanyId;
+			link.ContactCompanyId = newCompanyId;
 			user.LatestUpdate = now;
 
 			var info = await mRepository.GetQueryable<UserInfo>(i => i.UserId == personId).SingleOrDefaultAsync(cancellationToken);
@@ -365,30 +382,81 @@ namespace api_server.Controllers.Contacts.Services
 				var oldInfo = await mRepository.GetQueryable<CompanyInfo>(i => i.CompanyId == oldId).SingleOrDefaultAsync(cancellationToken);
 				if (oldInfo?.PrimaryContactUserId == personId) { oldInfo.PrimaryContactUserId = null; oldInfo.LatestUpdate = now; }
 			}
-			await ApplyPrimaryAsync(newCompanyId, personId, request.IsPrimary, now, cancellationToken);
+			if (newCompanyId is int primaryCompanyId) await ApplyPrimaryAsync(primaryCompanyId, personId, request.IsPrimary, now, cancellationToken);
 
 			await mRepository.SaveAsync(cancellationToken);
 			return ContactResult<ContactPersonDto>.Ok((await PersonDtoAsync(ownerCompanyId, userId, personId, cancellationToken))!);
 		}
 
-		public async Task<ContactResult<ContactPersonDto>> SetArchivedAsync(int ownerCompanyId, int userId, int personId, bool archived, CancellationToken cancellationToken)
+		public async Task<ContactResult<ContactPersonDto>> SetStatusAsync(int ownerCompanyId, int userId, int personId, short target, CancellationToken cancellationToken)
 		{
+			if (target != UserStatus.Active && target != UserStatus.Suspended && target != UserStatus.Archived)
+				return ContactResult<ContactPersonDto>.Invalid("A person can only be made active, suspended or archived.");
+
+			var before = await PersonDtoAsync(ownerCompanyId, userId, personId, cancellationToken);
+			if (before == null) return ContactResult<ContactPersonDto>.NotFound();
+			if (before.StatusId == UserStatus.Archived) return ContactResult<ContactPersonDto>.Invalid("An archived person cannot be changed.");
+			if (before.StatusId == target) return ContactResult<ContactPersonDto>.Ok(before);
+
+			var now = Now();
+			if (before.IsEmployee)
+			{
+				// A colleague is a platform user: only their membership in the caller's company changes (as in User Management), not their account.
+				var membership = target switch
+				{
+					UserStatus.Active => User2CompanyStatus.Active,
+					UserStatus.Suspended => User2CompanyStatus.Suspended,
+					_ => User2CompanyStatus.Deleted,
+				};
+				var outcome = await mCompanyAdmin.PatchUser2CompanyAsync(ownerCompanyId, userId, personId, new User2CompanyPatchDto { StatusId = Optional<short>.Of(membership) }, cancellationToken);
+				switch (outcome)
+				{
+					case CompanyAdminPatchOutcome.Updated: break;
+					case CompanyAdminPatchOutcome.NotFound: return ContactResult<ContactPersonDto>.NotFound();
+					case CompanyAdminPatchOutcome.SelfNotAllowed: return ContactResult<ContactPersonDto>.Invalid("You cannot change your own status.");
+					default: return ContactResult<ContactPersonDto>.Invalid("This colleague's status cannot be changed from here.");
+				}
+				if (target != UserStatus.Active) await ReplacePrimaryAsync(ownerCompanyId, ownerCompanyId, personId, now, cancellationToken);
+				await mRepository.SaveAsync(cancellationToken);
+				// An archived colleague is no longer a member, so the page is built from what we had.
+				var after = await PersonDtoAsync(ownerCompanyId, userId, personId, cancellationToken) ?? before;
+				after.StatusId = target;
+				return ContactResult<ContactPersonDto>.Ok(after);
+			}
+
 			var link = await FindVisiblePersonLinkAsync(ownerCompanyId, userId, personId, cancellationToken);
 			if (link == null) return ContactResult<ContactPersonDto>.NotFound();
-			if (link.IsArchived != archived)
-			{
-				link.IsArchived = archived;
-				link.LatestUpdate = Now();
-				await mRepository.SaveAsync(cancellationToken);
-			}
+			var user = await mRepository.GetQueryable<User>(u => u.Id == personId).SingleAsync(cancellationToken);
+			user.StatusId = target;
+			user.LatestUpdate = now;
+			link.LatestUpdate = now;
+			if (target != UserStatus.Active && link.ContactCompanyId is int companyId) await ReplacePrimaryAsync(ownerCompanyId, companyId, personId, now, cancellationToken);
+			await mRepository.SaveAsync(cancellationToken);
 			return ContactResult<ContactPersonDto>.Ok((await PersonDtoAsync(ownerCompanyId, userId, personId, cancellationToken))!);
+		}
+
+		/// <summary>
+		/// The person stops being the company's primary contact when they were: the oldest other active contact (shared, not private to a user)
+		/// takes over, or there is none. For the caller's own company the candidates are its active members.
+		/// </summary>
+		private async Task ReplacePrimaryAsync(int ownerCompanyId, int companyId, int personId, DateTime now, CancellationToken cancellationToken)
+		{
+			var info = await mRepository.GetQueryable<CompanyInfo>(i => i.CompanyId == companyId).SingleOrDefaultAsync(cancellationToken);
+			if (info == null || info.PrimaryContactUserId != personId) return;
+
+			var candidateIds = (await mRepository.GetQueryable<CompanyUserContact>(l => l.OwnerCompanyId == ownerCompanyId && l.ContactCompanyId == companyId && l.OwnerUserId == null).AsNoTracking()
+				.Select(l => l.ContactUserId).ToListAsync(cancellationToken)).ToList();
+			if (companyId == ownerCompanyId) candidateIds.AddRange((await MemberStatusesAsync(ownerCompanyId, cancellationToken)).Where(m => m.Value != User2CompanyStatus.Suspended).Select(m => m.Key));
+			var activeIds = await mRepository.GetQueryable<User>(u => candidateIds.Contains(u.Id) && u.Id != personId && u.StatusId == UserStatus.Active).AsNoTracking().OrderBy(u => u.Id).Select(u => u.Id).ToListAsync(cancellationToken);
+			info.PrimaryContactUserId = activeIds.Count > 0 ? activeIds[0] : null;
+			info.LatestUpdate = now;
 		}
 
 		public async Task<ContactResult<ContactPersonDto>> PatchPersonAsync(int ownerCompanyId, int userId, int personId, PatchContactPersonDto request, CancellationToken cancellationToken)
 		{
-			// Colleagues have no link here: they are managed in User Management.
+			// Colleagues have no link here: only their title, mobile and employee status can be changed (the rest is in User Management).
 			var link = await FindVisiblePersonLinkAsync(ownerCompanyId, userId, personId, cancellationToken);
-			if (link == null) return ContactResult<ContactPersonDto>.NotFound();
+			if (link == null) return await PatchColleagueAsync(ownerCompanyId, userId, personId, request, cancellationToken);
 			if (request.ContactTypeId is short ct && !await mRepository.GetQueryable<ContactType>(t => t.Id == ct).AnyAsync(cancellationToken))
 				return ContactResult<ContactPersonDto>.Invalid("Unknown contact type.");
 
@@ -400,12 +468,54 @@ namespace api_server.Controllers.Contacts.Services
 				info = new UserInfo { UserId = personId };
 				mRepository.Create(info);
 			}
+			if (user.StatusId == UserStatus.Archived) return ContactResult<ContactPersonDto>.Invalid("An archived person cannot be changed.");
+			if (request.IsPrimary == true && user.StatusId != UserStatus.Active) return ContactResult<ContactPersonDto>.Invalid("Only an active contact can be primary.");
 			if (request.ContactTypeId != null) info.ContactTypeId = request.ContactTypeId;
-			if (request.IsActive != null) info.IsActive = request.IsActive.Value;
+			if (request.Title != null) info.Title = Blank(request.Title);
+			if (request.Mobile != null) info.Mobile = Blank(request.Mobile);
+			// The employee status belongs to the Employee type: it can only be set for one, and changing to another type clears it.
+			var finalType = info.ContactTypeId ?? ContactType.Contact;
+			if (request.EmployeeStatusId is short es)
+			{
+				if (!await mRepository.GetQueryable<EmployeeStatus>(t => t.Id == es).AnyAsync(cancellationToken)) return ContactResult<ContactPersonDto>.Invalid("Unknown employee status.");
+				if (finalType != ContactType.Employee) return ContactResult<ContactPersonDto>.Invalid("An employee status is only for a contact whose type is Employee.");
+				info.EmployeeStatusId = es;
+			}
+			if (finalType != ContactType.Employee) info.EmployeeStatusId = null;
 			info.LatestUpdate = now;
 			link.LatestUpdate = now;
-			if (user.CompanyId is int companyId) await ApplyPrimaryAsync(companyId, personId, request.IsPrimary, now, cancellationToken);
+			if (link.ContactCompanyId is int companyId) await ApplyPrimaryAsync(companyId, personId, request.IsPrimary, now, cancellationToken);
+			else if (request.IsPrimary == true) return ContactResult<ContactPersonDto>.Invalid("A person without a company cannot be a primary contact.");
 
+			await mRepository.SaveAsync(cancellationToken);
+			return ContactResult<ContactPersonDto>.Ok((await PersonDtoAsync(ownerCompanyId, userId, personId, cancellationToken))!);
+		}
+
+		/// <summary>
+		/// A colleague's title, mobile and employee status (the part of crm_user_info that suits them). Name, email and phone are the user's own and
+		/// are managed in User Management; a colleague has no contact type. Only a colleague who works for the caller's company can be changed here,
+		/// because the row is shared by every company the user belongs to.
+		/// </summary>
+		private async Task<ContactResult<ContactPersonDto>> PatchColleagueAsync(int ownerCompanyId, int userId, int personId, PatchContactPersonDto request, CancellationToken cancellationToken)
+		{
+			if (!(await MemberStatusesAsync(ownerCompanyId, cancellationToken)).ContainsKey(personId)) return ContactResult<ContactPersonDto>.NotFound();
+			if (request.ContactTypeId != null) return ContactResult<ContactPersonDto>.Invalid("A colleague has no contact type.");
+			if (request.EmployeeStatusId is short es && !await mRepository.GetQueryable<EmployeeStatus>(t => t.Id == es).AnyAsync(cancellationToken))
+				return ContactResult<ContactPersonDto>.Invalid("Unknown employee status.");
+
+			var user = await mRepository.GetQueryable<User>(u => u.Id == personId).AsNoTracking().SingleAsync(cancellationToken);
+			if (user.CompanyId != ownerCompanyId) return ContactResult<ContactPersonDto>.Invalid("This person works for another company, so only they can change these details.");
+
+			var info = await mRepository.GetQueryable<UserInfo>(i => i.UserId == personId).SingleOrDefaultAsync(cancellationToken);
+			if (info == null)
+			{
+				info = new UserInfo { UserId = personId };
+				mRepository.Create(info);
+			}
+			if (request.Title != null) info.Title = Blank(request.Title);
+			if (request.Mobile != null) info.Mobile = Blank(request.Mobile);
+			if (request.EmployeeStatusId != null) info.EmployeeStatusId = request.EmployeeStatusId;
+			info.LatestUpdate = Now();
 			await mRepository.SaveAsync(cancellationToken);
 			return ContactResult<ContactPersonDto>.Ok((await PersonDtoAsync(ownerCompanyId, userId, personId, cancellationToken))!);
 		}
@@ -415,16 +525,19 @@ namespace api_server.Controllers.Contacts.Services
 		/// <summary>Makes the user, crm_user_info and the link (checks the company is visible are the caller's). Returns the new user id.</summary>
 		private async Task<ContactResult<int>> CreatePersonCoreAsync(int ownerCompanyId, int userId, SaveContactPersonDto request, CancellationToken cancellationToken)
 		{
-			if (request.CompanyId is not int companyId || !await CanSeeCompanyAsync(ownerCompanyId, userId, companyId, cancellationToken))
-				return ContactResult<int>.Invalid("Pick the company the person works for.");
+			// The company is optional: a person can be kept without one.
+			var companyId = request.CompanyId;
+			if (companyId is int cid && !await CanSeeCompanyAsync(ownerCompanyId, userId, cid, cancellationToken))
+				return ContactResult<int>.Invalid("Pick one of your companies, or leave the company empty.");
+			if (companyId == null && request.IsPrimary == true) return ContactResult<int>.Invalid("A person without a company cannot be a primary contact.");
 
 			var now = Now();
 			var user = new User
 			{
 				// The name is not a login: the account is Inactive and has no password, so a random one only has to be unique.
 				UserName = Guid.NewGuid().ToString("N"),
-				CompanyId = companyId,
-				StatusId = UserStatus.Inactive,
+				// No CompanyId: the user does not belong to the company they are a contact at; that is the link's ContactCompanyId.
+				StatusId = UserStatus.Active,
 				UserSourceId = UserSource.Contact,
 				KindId = UserKind.Contact,
 				LatestUpdate = now,
@@ -438,8 +551,8 @@ namespace api_server.Controllers.Contacts.Services
 				var info = new UserInfo { UserId = user.Id, LatestUpdate = now };
 				ApplyInfo(info, request);
 				mRepository.Create(info);
-				mRepository.Create(new CompanyUserContact { OwnerCompanyId = ownerCompanyId, ContactUserId = user.Id, OwnerUserId = request.IsPrivate == true ? userId : null, CreationDate = now, LatestUpdate = now });
-				await ApplyPrimaryAsync(companyId, user.Id, request.IsPrimary, now, cancellationToken);
+				mRepository.Create(new CompanyUserContact { OwnerCompanyId = ownerCompanyId, ContactUserId = user.Id, OwnerUserId = request.IsPrivate == true ? userId : null, ContactCompanyId = companyId, CreationDate = now, LatestUpdate = now });
+				if (companyId is int primaryCompanyId) await ApplyPrimaryAsync(primaryCompanyId, user.Id, request.IsPrimary, now, cancellationToken);
 				await mRepository.SaveAsync(cancellationToken);
 			}
 			catch
@@ -485,8 +598,9 @@ namespace api_server.Controllers.Contacts.Services
 			info.Title = Blank(request.Title);
 			info.Mobile = Blank(request.Mobile);
 			info.ContactTypeId = request.ContactTypeId ?? ContactType.Contact;
+			// The employee status only means something for an Employee; otherwise it is cleared.
+			info.EmployeeStatusId = info.ContactTypeId == ContactType.Employee ? request.EmployeeStatusId : null;
 			info.LeadSourceId = request.LeadSourceId;
-			info.IsActive = request.IsActive;
 		}
 
 		private async Task<string?> ValidatePersonAsync(SaveContactPersonDto request, CancellationToken cancellationToken)
@@ -496,6 +610,11 @@ namespace api_server.Controllers.Contacts.Services
 			if (email != null && !(MailAddress.TryCreate(email, out var parsed) && parsed.Address == email && email.Contains('@'))) return "Enter a valid email address.";
 			if (request.ContactTypeId is short ct && !await mRepository.GetQueryable<ContactType>(t => t.Id == ct).AnyAsync(cancellationToken)) return "Unknown contact type.";
 			if (request.LeadSourceId is short ls && !await mRepository.GetQueryable<LeadSource>(t => t.Id == ls).AnyAsync(cancellationToken)) return "Unknown lead source.";
+			if (request.EmployeeStatusId is short es)
+			{
+				if (!await mRepository.GetQueryable<EmployeeStatus>(t => t.Id == es).AnyAsync(cancellationToken)) return "Unknown employee status.";
+				if ((request.ContactTypeId ?? ContactType.Contact) != ContactType.Employee) return "An employee status is only for a contact whose type is Employee.";
+			}
 			return null;
 		}
 
@@ -504,16 +623,17 @@ namespace api_server.Controllers.Contacts.Services
 		{
 			var link = await FindVisiblePersonLinkAsync(ownerCompanyId, userId, personId, cancellationToken, track: false);
 			var isEmployee = false;
+			short memberStatus = 0;
 			if (link == null)
 			{
-				isEmployee = (await MemberIdsAsync(ownerCompanyId, cancellationToken)).Contains(personId);
+				isEmployee = (await MemberStatusesAsync(ownerCompanyId, cancellationToken)).TryGetValue(personId, out memberStatus);
 				if (!isEmployee) return null;
 			}
 
 			var user = await mRepository.GetQueryable<User>(u => u.Id == personId).AsNoTracking().SingleOrDefaultAsync(cancellationToken);
 			if (user == null) return null;
 			var info = await mRepository.GetQueryable<UserInfo>(i => i.UserId == personId).AsNoTracking().SingleOrDefaultAsync(cancellationToken);
-			var companyId = isEmployee ? ownerCompanyId : user.CompanyId;
+			var companyId = isEmployee ? ownerCompanyId : link?.ContactCompanyId;
 			string? companyName = null;
 			var primary = false;
 			if (companyId is int cid)
@@ -534,9 +654,10 @@ namespace api_server.Controllers.Contacts.Services
 				Phone = user.Phone,
 				Mobile = info?.Mobile,
 				ContactTypeId = isEmployee ? null : info?.ContactTypeId ?? ContactType.Contact,
+				EmployeeStatusId = info?.EmployeeStatusId,
 				LeadSourceId = info?.LeadSourceId,
-				IsActive = isEmployee || (info?.IsActive ?? true),
-				IsArchived = link?.IsArchived ?? false,
+				StatusId = isEmployee ? ContactStatusOfMember(memberStatus) : user.StatusId,
+				KindId = user.KindId,
 				IsPrivate = link?.OwnerUserId != null,
 				IsPrimary = primary,
 				CompanyId = companyId,
@@ -561,8 +682,7 @@ namespace api_server.Controllers.Contacts.Services
 				managerName = m == null ? null : Pick(m.DisplayName, UserNameHelper.Compose(m.FirstName, m.LastName), m.UserName);
 			}
 
-			var visibleIds = (await VisiblePersonLinksAsync(ownerCompanyId, userId, cancellationToken)).Select(l => l.ContactUserId).ToList();
-			var contactCount = await mRepository.GetQueryable<User>(u => visibleIds.Contains(u.Id) && u.CompanyId == companyId).CountAsync(cancellationToken);
+			var contactCount = (await VisiblePersonLinksAsync(ownerCompanyId, userId, cancellationToken)).Count(l => l.ContactCompanyId == companyId);
 
 			return new ContactCompanyDto
 			{
@@ -681,6 +801,14 @@ namespace api_server.Controllers.Contacts.Services
 			companyId == ownerCompanyId || await FindVisibleCompanyLinkAsync(ownerCompanyId, userId, companyId, cancellationToken, track: false) != null;
 
 		/// <summary>The users who are active members of the company (its colleagues).</summary>
+		/// <summary>The colleagues the Contacts list shows (active members, including those working for another company, and members suspended by the company) with their membership status.</summary>
+		private async Task<Dictionary<int, short>> MemberStatusesAsync(int companyId, CancellationToken cancellationToken) =>
+			(await mRepository.GetQueryable<User2Company>(m => m.CompanyId == companyId && (m.StatusId == User2CompanyStatus.Active || m.StatusId == User2CompanyStatus.WithOtherCompany || m.StatusId == User2CompanyStatus.Suspended))
+				.AsNoTracking().Select(m => new { m.UserId, m.StatusId }).ToListAsync(cancellationToken)).GroupBy(m => m.UserId).ToDictionary(g => g.Key, g => g.Any(m => m.StatusId != User2CompanyStatus.Suspended) ? User2CompanyStatus.Active : User2CompanyStatus.Suspended);
+
+		/// <summary>The contact status (a UserStatus) a colleague shows with: suspended when their membership is, else active.</summary>
+		private static short ContactStatusOfMember(short membershipStatusId) => membershipStatusId == User2CompanyStatus.Suspended ? UserStatus.Suspended : UserStatus.Active;
+
 		private async Task<HashSet<int>> MemberIdsAsync(int companyId, CancellationToken cancellationToken) =>
 			(await mRepository.GetQueryable<User2Company>(m => m.CompanyId == companyId && (m.StatusId == User2CompanyStatus.Active || m.StatusId == User2CompanyStatus.WithOtherCompany))
 				.AsNoTracking().Select(m => m.UserId).ToListAsync(cancellationToken)).ToHashSet();
@@ -739,6 +867,7 @@ namespace api_server.Controllers.Contacts.Services
 		private static string Pick(params string?[] names) => names.FirstOrDefault(n => !string.IsNullOrWhiteSpace(n)) ?? "";
 
 		private readonly IRepository mRepository;
+		private readonly ICompanyAdminService mCompanyAdmin;
 		private readonly TimeProvider mTime;
 	}
 }

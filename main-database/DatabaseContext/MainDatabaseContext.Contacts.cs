@@ -15,6 +15,7 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 			modelBuilder.Entity<CompanyType>(entity => { entity.ToTable("crm_company_type"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
 			modelBuilder.Entity<ContactType>(entity => { entity.ToTable("crm_contact_type"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
 			modelBuilder.Entity<LeadSource>(entity => { entity.ToTable("crm_lead_source"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
+			modelBuilder.Entity<EmployeeStatus>(entity => { entity.ToTable("crm_employee_status"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
 			modelBuilder.Entity<PaymentTerm>(entity => { entity.ToTable("crm_payment_term"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
 			modelBuilder.Entity<ActivityType>(entity => { entity.ToTable("crm_activity_type"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
 			modelBuilder.Entity<ActivityPriority>(entity => { entity.ToTable("crm_activity_priority"); entity.HasKey(e => e.Id); entity.Property(e => e.Id).ValueGeneratedNever(); });
@@ -72,6 +73,9 @@ namespace mf.aiApi.mainDatabase.DatabaseContext
 				entity.HasOne<Company>().WithMany().HasForeignKey(e => e.OwnerCompanyId).OnDelete(DeleteBehavior.Cascade);
 				entity.HasOne<User>().WithMany().HasForeignKey(e => e.ContactUserId).OnDelete(DeleteBehavior.Cascade);
 				entity.HasOne<User>().WithMany().HasForeignKey(e => e.OwnerUserId).OnDelete(DeleteBehavior.SetNull);
+				// Companies are only deactivated, never deleted, so a company that contacts point at cannot be removed.
+				entity.HasOne<Company>().WithMany().HasForeignKey(e => e.ContactCompanyId).OnDelete(DeleteBehavior.Restrict);
+				entity.HasIndex(e => new { e.OwnerCompanyId, e.ContactCompanyId });
 			});
 
 			modelBuilder.Entity<ActivitySeries>(entity =>

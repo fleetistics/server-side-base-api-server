@@ -10,7 +10,9 @@ namespace db_model.Contacts
         public int ContactUserId { get; set; }
         public int? OwnerUserId { get; set; }
 
-        public bool IsArchived { get; set; }
+        /// <summary>The company the person works for (a company contact of the owner, or the owner itself). Null: a person without a company.</summary>
+        public int? ContactCompanyId { get; set; }
+
         public DateTime CreationDate { get; set; }
         public DateTime LatestUpdate { get; set; }
     }

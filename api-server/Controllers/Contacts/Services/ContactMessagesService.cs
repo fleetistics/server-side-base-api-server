@@ -41,6 +41,7 @@ namespace api_server.Controllers.Contacts.Services
 			var person = await mContacts.GetPersonAsync(ownerCompanyId, userId, personId, cancellationToken);
 			if (person.Outcome != ContactOutcome.Done) return ContactResult<ContactMessageResultDto>.NotFound(person.Message);
 			var contact = person.Value!;
+			if (contact.StatusId == UserStatus.Archived) return ContactResult<ContactMessageResultDto>.Invalid("An archived contact cannot be messaged.");
 			if (string.IsNullOrWhiteSpace(contact.Email)) return ContactResult<ContactMessageResultDto>.Invalid("This contact has no email address.");
 
 			var sender = await mRepository.GetQueryable<User>(u => u.Id == userId).AsNoTracking()

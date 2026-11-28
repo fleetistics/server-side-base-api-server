@@ -11,7 +11,8 @@
 INSERT INTO user_status ("Id", "Name") VALUES
     (0,  'Just Created'),
     (1,  'Active'),
-    (13, 'Inactive')
+    (13, 'Suspended'),
+    (14, 'Archived')
 ON CONFLICT ("Id") DO NOTHING;
 
 INSERT INTO user_source ("Id", "Name") VALUES
@@ -35,7 +36,8 @@ ON CONFLICT ("Id") DO NOTHING;
 -- ===== Companies =====
 INSERT INTO company_status ("Id", "Name") VALUES
     (1,  'Active'),
-    (13, 'Inactive')
+    (13, 'Suspended'),
+    (14, 'Archived')
 ON CONFLICT ("Id") DO NOTHING;
 
 INSERT INTO user2company_status ("Id", "Name") VALUES
@@ -76,7 +78,7 @@ ON CONFLICT ("Id") DO NOTHING;
 -- ===== Contacts (CRM) =====
 INSERT INTO crm_company_type ("Id", "Name") VALUES
     (1, 'Customer'),
-    (2, 'Vendor'),
+    (2, 'Customer'),
     (3, 'Partner'),
     (4, 'Affiliate'),
     (5, 'Internal')
@@ -84,8 +86,16 @@ ON CONFLICT ("Id") DO NOTHING;
 
 INSERT INTO crm_contact_type ("Id", "Name") VALUES
     (1, 'Contact'),
-    (2, 'Vendor'),
-    (3, 'Partner')
+    (2, 'Customer'),
+    (3, 'Vendor'),
+    (4, 'Employee')
+ON CONFLICT ("Id") DO NOTHING;
+
+INSERT INTO crm_employee_status ("Id", "Name") VALUES
+    (1, 'Office'),
+    (2, 'Manager'),
+    (3, 'Driver'),
+    (4, 'Warehouse')
 ON CONFLICT ("Id") DO NOTHING;
 
 INSERT INTO crm_lead_source ("Id", "Name") VALUES
@@ -187,7 +197,8 @@ ON CONFLICT ("Id") DO NOTHING;
 INSERT INTO gps_device_status ("Id", "Name") VALUES
     (1,  'Active'),
     (12, 'Mobile Log Out Inactive'),
-    (13, 'Inactive')
+    (13, 'Suspended'),
+    (14, 'Archived')
 ON CONFLICT ("Id") DO NOTHING;
 
 INSERT INTO gps_location_accuracy ("Id", "Name") VALUES

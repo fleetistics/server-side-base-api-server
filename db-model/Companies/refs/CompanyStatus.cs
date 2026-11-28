@@ -5,8 +5,9 @@
     {
         public const short Active = 1;
         public const short Inactive = 13;
+		public const short Archived = 14;
 
-        public short Id { get; set; }
+		public short Id { get; set; }
         public string Name { get; set; } = default!;
         public DateTime LatestUpdate { get; set; }
     }

@@ -17,7 +17,8 @@ namespace db_model.Contacts
         public short PriorityId { get; set; } = ActivityPriority.Normal;
         public short StatusId { get; set; } = ActivityStatus.Scheduled;
 
-        public int CompanyId { get; set; }
+        /// <summary>The account it is about; null when it is about a person who has no company.</summary>
+        public int? CompanyId { get; set; }
         public int? ContactUserId { get; set; }
         public int? AssignedToUserId { get; set; }
         public int? CreatedByUserId { get; set; }

@@ -22,6 +22,8 @@ namespace api_server.Controllers.Contacts.Dto
 		/// <summary>1 Contact, 2 Vendor, 3 Partner.</summary>
 		public List<LookupItemDto> ContactTypes { get; set; } = new();
 		public List<LookupItemDto> LeadSources { get; set; } = new();
+		/// <summary>Office, Manager, Driver, Warehouse: for a contact whose type is Employee.</summary>
+		public List<LookupItemDto> EmployeeStatuses { get; set; } = new();
 		public List<LookupItemDto> PaymentTerms { get; set; } = new();
 		/// <summary>The statuses a contact company can have: 1 Active, 13 Inactive.</summary>
 		public List<LookupItemDto> CompanyStatuses { get; set; } = new();
@@ -142,14 +144,18 @@ namespace api_server.Controllers.Contacts.Dto
 		public bool IsEmployee { get; set; }
 		/// <summary>A ContactType id: 1 Contact, 2 Vendor, 3 Partner. Null for an employee.</summary>
 		public short? ContactTypeId { get; set; }
+		/// <summary>An EmployeeStatus id; only for a contact whose type is Employee (otherwise null).</summary>
+		public short? EmployeeStatusId { get; set; }
 		public int? CompanyId { get; set; }
 		public string? CompanyName { get; set; }
 		public string? Title { get; set; }
 		public string? Email { get; set; }
 		public string? Phone { get; set; }
 		public bool IsPrimary { get; set; }
-		public bool IsActive { get; set; }
-		public bool IsArchived { get; set; }
+		/// <summary>A UserStatus: 1 Active, 13 Suspended, 14 Archived. For a colleague it comes from their membership in the caller's company (Deleted shows as Archived).</summary>
+		public short StatusId { get; set; }
+		/// <summary>A UserKind: 1 User (a colleague, who signs in to the portal and the app), 2 Contact, 3 Test.</summary>
+		public short KindId { get; set; }
 		public bool IsPrivate { get; set; }
 	}
 
@@ -166,24 +172,32 @@ namespace api_server.Controllers.Contacts.Dto
 		public string? Phone { get; set; }
 		public string? Mobile { get; set; }
 		public short? ContactTypeId { get; set; }
+		/// <summary>An EmployeeStatus id; only for a contact whose type is Employee (otherwise null).</summary>
+		public short? EmployeeStatusId { get; set; }
 		public short? LeadSourceId { get; set; }
-		public bool IsActive { get; set; }
-		public bool IsArchived { get; set; }
+		/// <summary>A UserStatus: 1 Active, 13 Suspended, 14 Archived. For a colleague it comes from their membership in the caller's company (Deleted shows as Archived).</summary>
+		public short StatusId { get; set; }
+		/// <summary>A UserKind: 1 User (a colleague, who signs in to the portal and the app), 2 Contact, 3 Test.</summary>
+		public short KindId { get; set; }
 		public bool IsPrivate { get; set; }
 		public bool IsPrimary { get; set; }
 		public int? CompanyId { get; set; }
 		public string? CompanyName { get; set; }
 	}
 
-	/// <summary>Changes only the fields that are sent (the contact panel's dropdowns). A field left out is unchanged.</summary>
+	/// <summary>Changes only the fields that are sent (the contact panel's dropdowns). A field left out is unchanged. For a colleague only Title, Mobile and EmployeeStatusId can be changed.</summary>
 	public class PatchContactPersonDto
 	{
 		/// <summary>A ContactType id.</summary>
 		public short? ContactTypeId { get; set; }
-		/// <summary>Whether the contact is active.</summary>
-		public bool? IsActive { get; set; }
+		/// <summary>An EmployeeStatus id; only for a contact whose type is Employee (otherwise null).</summary>
+		public short? EmployeeStatusId { get; set; }
 		/// <summary>True: the person becomes the primary contact of their company; false: they stop being it.</summary>
 		public bool? IsPrimary { get; set; }
+		/// <summary>The job title; an empty text clears it. Left out: unchanged. Also for a colleague.</summary>
+		[MaxLength(200)] public string? Title { get; set; }
+		/// <summary>The mobile phone; an empty text clears it. Left out: unchanged. Also for a colleague.</summary>
+		[MaxLength(60)] public string? Mobile { get; set; }
 	}
 
 	/// <summary>Creates a contact person, or replaces the fields of one (send the whole form).</summary>
@@ -196,10 +210,11 @@ namespace api_server.Controllers.Contacts.Dto
 		[MaxLength(60)] public string? Phone { get; set; }
 		[MaxLength(60)] public string? Mobile { get; set; }
 		public short? ContactTypeId { get; set; }
+		/// <summary>An EmployeeStatus id; only for a contact whose type is Employee (otherwise null).</summary>
+		public short? EmployeeStatusId { get; set; }
 		public short? LeadSourceId { get; set; }
-		public bool IsActive { get; set; } = true;
 
-		/// <summary>The company the person works for: the caller's own company or one of their company contacts. Required, except inside <see cref="SaveContactCompanyDto.PrimaryContact"/>.</summary>
+		/// <summary>The company the person works for: the caller's own company or one of their company contacts. Optional: empty keeps a person without a company (who cannot be a primary contact).</summary>
 		public int? CompanyId { get; set; }
 
 		/// <summary>On create: true makes the person visible to the caller only. On update: false shares a private one (only its owner user can).</summary>

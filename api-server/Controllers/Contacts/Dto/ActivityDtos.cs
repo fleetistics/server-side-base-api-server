@@ -39,7 +39,7 @@ namespace api_server.Controllers.Contacts.Dto
 		public string? Notes { get; set; }
 		public short PriorityId { get; set; }
 		public short StatusId { get; set; }
-		public int CompanyId { get; set; }
+		public int? CompanyId { get; set; }
 		public string? CompanyName { get; set; }
 		public int? ContactUserId { get; set; }
 		public string? ContactName { get; set; }

@@ -1,3 +1,4 @@
+using db_model.UserManagement;
 using api_server.Controllers.Base;
 using api_server.Controllers.Contacts.Dto;
 using api_server.Controllers.Contacts.Services;
@@ -78,7 +79,7 @@ namespace api_server.Controllers.Contacts
 
 		// ---- people ----
 
-		/// <summary>The caller's colleagues and the contact people they can see (archived ones too: they carry IsArchived).</summary>
+		/// <summary>The caller's colleagues and the contact people they can see (with their StatusId: 1 Active, 13 Suspended, 14 Archived).</summary>
 		[HttpGet("/api/contacts/people")]
 		[ProducesResponseType(typeof(IReadOnlyList<ContactPersonRowDto>), StatusCodes.Status200OK)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -146,24 +147,40 @@ namespace api_server.Controllers.Contacts
 			return Answer(await mMessages.SendAsync(companyId, UserId, personId, request, cancellationToken));
 		}
 
+		/// <summary>Suspends the person (reversible with resume). A colleague's membership of the caller's company is suspended, not their account. If they were the company's primary contact, another active contact takes over.</summary>
+		[HttpPost("/api/contacts/people/{personId:int}/suspend")]
+		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> Suspend(int personId, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Answer(await mContacts.SetStatusAsync(companyId, UserId, personId, UserStatus.Suspended, cancellationToken));
+		}
+
+		/// <summary>Makes a suspended person active again. An archived person cannot be resumed (400).</summary>
+		[HttpPost("/api/contacts/people/{personId:int}/resume")]
+		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+		[ProducesResponseType(StatusCodes.Status403Forbidden)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+		public async Task<IActionResult> Resume(int personId, CancellationToken cancellationToken)
+		{
+			if (CompanyId is not int companyId) return Forbid();
+			return Answer(await mContacts.SetStatusAsync(companyId, UserId, personId, UserStatus.Active, cancellationToken));
+		}
+
+		/// <summary>Archives the person. This is final: an archived person cannot be changed or brought back.</summary>
 		[HttpPost("/api/contacts/people/{personId:int}/archive")]
 		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
+		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
 		[ProducesResponseType(StatusCodes.Status403Forbidden)]
 		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
 		public async Task<IActionResult> Archive(int personId, CancellationToken cancellationToken)
 		{
 			if (CompanyId is not int companyId) return Forbid();
-			return Answer(await mContacts.SetArchivedAsync(companyId, UserId, personId, true, cancellationToken));
-		}
-
-		[HttpPost("/api/contacts/people/{personId:int}/unarchive")]
-		[ProducesResponseType(typeof(ContactPersonDto), StatusCodes.Status200OK)]
-		[ProducesResponseType(StatusCodes.Status403Forbidden)]
-		[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-		public async Task<IActionResult> Unarchive(int personId, CancellationToken cancellationToken)
-		{
-			if (CompanyId is not int companyId) return Forbid();
-			return Answer(await mContacts.SetArchivedAsync(companyId, UserId, personId, false, cancellationToken));
+			return Answer(await mContacts.SetStatusAsync(companyId, UserId, personId, UserStatus.Archived, cancellationToken));
 		}
 
 		private IActionResult Answer<T>(ContactResult<T> result) =>
